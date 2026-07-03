@@ -1,0 +1,9 @@
+qiskit>=2.0
+qiskit-aer>=0.17
+numpy
+scipy
+matplotlib
+pandas
+quimb
+stim
+pytest

@@ -1,0 +1,28 @@
+# archives (extracted contents are tracked instead where useful)
+*.zip
+
+# NOT for the public repo: unpublished manuscript, internal planning, legacy collaboration code
+# (repo hlammiv/hadronic_tensor is PUBLIC — keep these local until decided otherwise)
+paper/
+PLAN.md
+z2_matter_qc-master/
+
+# python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+*.egg-info/
+.venv/
+venv/
+
+# OS cruft
+.DS_Store
+
+# large legacy run data — keep locally, don't ship to GitHub
+z2_matter_qc-master/simulation_main/rundata/*.pkl
+z2_matter_qc-master/simulation_main/*.csv
+z2_matter_qc-master/pauli_twirling/*.txt
+
+# scratch outputs
+*.log
+scratch/
