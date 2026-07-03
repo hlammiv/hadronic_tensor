@@ -15,4 +15,4 @@ Conventions (fixed package-wide; see PLAN.md sec. 2):
 """
 
 from .lattice import Z2Lattice
-from . import hamiltonian, currents, exact
+from . import hamiltonian, currents, exact, spectroscopy, stateprep
