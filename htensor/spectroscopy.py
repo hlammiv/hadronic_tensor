@@ -115,30 +115,83 @@ def meson_band(lat: Z2Lattice, m0, g2, eta, n_states: int | None = None) -> dict
 
 
 # ------------------------------------------------------------- wavepacket
+def _interp_op(lat: Z2Lattice, bond: int, kind: str):
+    if kind == "cur":
+        return exact.to_sparse(cur.bond_current(lat, bond, eta=1.0))
+    if kind == "hop":
+        from . import hamiltonian as _h
+        return exact.to_sparse(_h.hop_term(lat, bond, eta=1.0))
+    raise ValueError(kind)
+
+
+def _packet_vector(lat: Z2Lattice, vac: np.ndarray, kind: str, parity: int,
+                   k0: float, sigma_x: float, x0: int) -> np.ndarray:
+    """Sum_x f(x) e^{i k0 (x - x0)} O_{kind}(bond 2x + parity) |vac>."""
+    nx = lat.nx
+    out = np.zeros_like(vac)
+    for x in range(nx):
+        pos = x + (0.25 if parity == 0 else 0.75)  # bond midpoint, spatial units
+        dd = pos - (x0 + 0.25)
+        d = (dd + nx / 2) % nx - nx / 2
+        f = np.exp(-d**2 / (4 * sigma_x**2)) * np.exp(1j * k0 * d)
+        out = out + f * (_interp_op(lat, 2 * x + parity, kind) @ vac)
+    return out
+
+
+def optimize_interpolator(lat: Z2Lattice, band: dict, k0: float = 0.0,
+                          sigma_x: float = 1.0, x0: int | None = None) -> dict:
+    """Best local interpolator mix over {cur, hop} x {even, odd bonds}:
+    maximize the meson-band fraction of the packet-smeared operator acting on
+    the vacuum (generalized Rayleigh quotient, 4x4).  Classical, cheap, and
+    the coefficients are volume-independent by locality."""
+    import scipy.linalg
+
+    if x0 is None:
+        x0 = lat.nx // 2
+    basis = [("cur", 0), ("cur", 1), ("hop", 0), ("hop", 1)]
+    vac = band["vacuum"]
+    us = [_packet_vector(lat, vac, k, p, k0, sigma_x, x0) for k, p in basis]
+    pus = []
+    for u in us:
+        pu = np.zeros_like(u)
+        for s in band["states"]:
+            pu = pu + s * np.vdot(s, u)
+        pus.append(pu)
+    A = np.array([[np.vdot(pi, pj) for pj in pus] for pi in pus])
+    B = np.array([[np.vdot(ui, uj) for uj in us] for ui in us])
+    B = B + 1e-12 * np.eye(len(basis))
+    vals, vecs = scipy.linalg.eigh(A, B)
+    c = vecs[:, -1]
+    return {"mix": dict(zip(basis, c)), "band_fraction": float(vals[-1].real),
+            "basis": basis}
+
+
 def meson_wavepacket(lat: Z2Lattice, band: dict, k0: float = 0.0,
-                     sigma_x: float = 1.0, x0: int | None = None) -> np.ndarray:
+                     sigma_x: float = 1.0, x0: int | None = None,
+                     mix: dict | None = None):
     """Boosted Gaussian meson wavepacket, band-projected (see module docstring).
 
     k0 in units of inverse spatial sites (2 pi j / Nx), sigma_x / x0 in
-    spatial sites; x0 defaults to mid-ring.
+    spatial sites; x0 defaults to mid-ring.  mix: {(kind, parity): coeff}
+    interpolator mix (default: the bare even-bond vector current); use
+    optimize_interpolator for a high-band-fraction target.
+    Returns (state, band_fraction_of_raw).
     """
-    nx = lat.nx
     if x0 is None:
-        x0 = nx // 2
+        x0 = lat.nx // 2
+    if mix is None:
+        mix = {("cur", 0): 1.0}
     vac = band["vacuum"]
     raw = np.zeros_like(vac)
-    for x in range(nx):
-        d = min(abs(x - x0), nx - abs(x - x0))  # ring distance
-        f = np.exp(-d**2 / (4 * sigma_x**2)) * np.exp(1j * k0 * (x - x0))
-        op = exact.to_sparse(cur.bond_current(lat, 2 * x, eta=1.0))
-        raw = raw + f * (op @ vac)
+    for (kind, parity), c in mix.items():
+        raw = raw + c * _packet_vector(lat, vac, kind, parity, k0, sigma_x, x0)
     proj = np.zeros_like(raw)
     for s in band["states"]:
         proj = proj + s * np.vdot(s, raw)
     norm = np.linalg.norm(proj)
     if norm < 1e-12:
         raise RuntimeError("interpolator has no overlap with the meson band")
-    return proj / norm, float(np.linalg.norm(proj) / np.linalg.norm(raw))
+    return proj / norm, float(norm / np.linalg.norm(raw))
 
 
 def electric_energy_profile(lat: Z2Lattice, psi: np.ndarray, vacuum: np.ndarray,
