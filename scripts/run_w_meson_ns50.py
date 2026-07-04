@@ -38,17 +38,16 @@ def log(msg):
     print(f"[{time.time()-t0:6.0f}s] {msg}", flush=True)
 
 
-# ---- ns=10-trained block parameters (sigma_x=0.75, window +-4; produced by
-# scripts/train_and_certify_v2.py -- do NOT fall back to the deprecated ns=8
-# training, whose whole-ring window does not transfer)
+# ---- L2-regularized ns=10-trained block parameters (small-angle, MPS-
+# friendly creation path; produced by scripts/regularize_wp_params.py)
 lat6 = Z2Lattice(6, pbc=True)
 TH = stateprep.optimize_vacuum(lat6, M0, G2, ETA, n_layers=2, restarts=2)["thetas"]
-cache = f"data/wp10_params_k{K0:.2f}_L3.npz"
+cache = f"data/wp10reg_params_k{K0:.2f}_L3.npz"
 if not os.path.exists(cache):
-    raise SystemExit(f"missing {cache}: run scripts/train_and_certify_v2.py first")
+    raise SystemExit(f"missing {cache}: run scripts/regularize_wp_params.py first")
 z = np.load(cache, allow_pickle=True)
 vec, offsets, n_layers, fid = z["vec"], list(z["offsets"]), int(z["L"]), float(z["F"])
-log(f"loaded ns=10-trained wavepacket params (F={fid:.4f})")
+log(f"loaded regularized wavepacket params (F={fid:.4f})")
 
 params = wavepacket.params_from_vector(vec, offsets, n_layers)
 
@@ -63,31 +62,40 @@ probes = [cur.charge_density(lat, v) for v in range(NS)] + \
 insert = cur.charge_density(lat, CENTER)
 H50 = ham.build_hamiltonian(lat, M0, G2, ETA)
 
-# packet-energy certification at the production volume
-from qiskit import transpile
+# ---- one-time high-accuracy state preparations (stored as MPS) + <H> cert
+from qiskit import QuantumCircuit
 from qiskit_aer import AerSimulator
-sim = AerSimulator(method="matrix_product_state",
-                   matrix_product_state_truncation_threshold=TRUNC,
-                   max_parallel_threads=4)
-for name, prep in (("vacuum", vac_prep), ("packet", wp_prep)):
-    order = backends.ring_chain_order(lat)
-    perm = backends._chain_perm(order)
-    qc = backends.permute_circuit(prep, perm, lat.n_qubits)
-    qc = transpile(qc, basis_gates=backends._AER_BASIS, optimization_level=1)
-    qc.save_expectation_value(backends.permute_pauli(H50, perm, lat.n_qubits),
-                              list(range(lat.n_qubits)), label="H")
-    e = sim.run(qc).result().data()["H"]
-    log(f"<H> {name} = {np.real(e):.6f}")
+from htensor.measure import split_current
 
-# ---- correlator grids
+anc_site = min(split_current(insert)[1][0][0])
+stored = {}
+for name, prep in (("vacuum", vac_prep), ("packet", wp_prep)):
+    t1 = time.time()
+    mps, perm = backends.prepare_state_mps(lat, prep, anc_site,
+                                           cap=512, trunc=1e-10)
+    stored[name] = (mps, perm)
+    n_tot = lat.n_qubits + 1
+    qc = QuantumCircuit(n_tot)
+    qc.set_matrix_product_state(mps)
+    qc.save_expectation_value(backends.permute_pauli(H50, perm, n_tot),
+                              list(range(n_tot)), label="H")
+    sim = AerSimulator(method="matrix_product_state",
+                       matrix_product_state_truncation_threshold=TRUNC,
+                       max_parallel_threads=4)
+    e = sim.run(qc).result().data()["H"]
+    log(f"{name}: prep+store {time.time()-t1:.0f}s, <H> = {np.real(e):.6f}")
+
+# ---- correlator grids (every circuit starts from the stored state)
 results = {}
-for name, prep, stat in (("wp", wp_prep, False), ("vac", vac_prep, True)):
+for name, key, stat in (("wp", "packet", False), ("vac", "vacuum", True)):
+    mps, perm = stored[key]
     rows = []
     for t in TIMES:
         d = backends.hadamard_correlator_aer(
-            lat, prep, insert, probes, M0, G2, ETA, [t], dt_target=DT_TARGET,
+            lat, None, insert, probes, M0, G2, ETA, [t], dt_target=DT_TARGET,
             method="matrix_product_state", mps_trunc=TRUNC,
-            stationary_1pt=(stat and t > 0))
+            stationary_1pt=(stat and t > 0),
+            initial_mps=mps, initial_perm=perm)
         rows.append(d)
         log(f"{name} t={t:4.1f} done  C00(t, x=0) = {d.correlator[0, CENTER]:.5f}")
     results[name] = rows

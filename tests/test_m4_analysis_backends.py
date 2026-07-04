@@ -59,6 +59,21 @@ def test_aer_backend_matches_reference(lat6_setup, method, tol):
     assert np.abs(d.probe_expect - ref.probe_expect).max() < tol
 
 
+def test_initial_mps_path_matches_direct(lat6_setup):
+    """prepare_state_mps + set_matrix_product_state reproduces the direct
+    path (prep re-simulated per circuit) exactly at high cap."""
+    lat, prep, ins, probes, times, ref = lat6_setup
+    from htensor.measure import split_current
+    anc_site = min(split_current(ins)[1][0][0])
+    mps, perm = backends.prepare_state_mps(lat, prep, anc_site,
+                                           cap=4096, trunc=1e-15)
+    d = backends.hadamard_correlator_aer(
+        lat, prep, ins, probes, 0.7, 1.1, 1.3, times, 0.05,
+        method="matrix_product_state", initial_mps=mps, initial_perm=perm)
+    assert np.abs(d.correlator - ref.correlator).max() < 5e-6
+    assert np.abs(d.probe_expect - ref.probe_expect).max() < 5e-6
+
+
 def test_mps_backend_moderate_size():
     """ns=10 (21 qubits with ancilla): MPS vs statevector method of Aer."""
     lat = Z2Lattice(10, pbc=True)
