@@ -38,26 +38,17 @@ def log(msg):
     print(f"[{time.time()-t0:6.0f}s] {msg}", flush=True)
 
 
-# ---- small-volume training (cached)
+# ---- ns=10-trained block parameters (sigma_x=0.75, window +-4; produced by
+# scripts/train_and_certify_v2.py -- do NOT fall back to the deprecated ns=8
+# training, whose whole-ring window does not transfer)
 lat6 = Z2Lattice(6, pbc=True)
 TH = stateprep.optimize_vacuum(lat6, M0, G2, ETA, n_layers=2, restarts=2)["thetas"]
-cache = f"data/wp_params_k{K0:.2f}_L3.npz"
-lat8 = Z2Lattice(8, pbc=True)
-if os.path.exists(cache):
-    z = np.load(cache, allow_pickle=True)
-    vec, offsets, n_layers, fid = z["vec"], list(z["offsets"]), int(z["L"]), float(z["F"])
-    log(f"loaded cached wavepacket params (F={fid:.4f})")
-else:
-    band8 = spectroscopy.meson_band(lat8, M0, G2, ETA)
-    mix = spectroscopy.optimize_interpolator(lat8, band8, k0=K0, sigma_x=1.0)
-    target, _ = spectroscopy.meson_wavepacket(lat8, band8, k0=K0, sigma_x=1.0,
-                                              mix=mix["mix"])
-    vac8 = np.asarray(Statevector.from_instruction(
-        stateprep.vacuum_ansatz(lat8, TH)))
-    r = block_engine.train_adjoint(lat8, vac8, target, 4, n_layers=3)
-    vec, offsets, n_layers, fid = r["vector"], r["offsets"], 3, r["fidelity"]
-    np.savez(cache, vec=vec, offsets=offsets, L=n_layers, F=fid)
-    log(f"trained wavepacket block at ns=8: F = {fid:.4f}")
+cache = f"data/wp10_params_k{K0:.2f}_L3.npz"
+if not os.path.exists(cache):
+    raise SystemExit(f"missing {cache}: run scripts/train_and_certify_v2.py first")
+z = np.load(cache, allow_pickle=True)
+vec, offsets, n_layers, fid = z["vec"], list(z["offsets"]), int(z["L"]), float(z["F"])
+log(f"loaded ns=10-trained wavepacket params (F={fid:.4f})")
 
 params = wavepacket.params_from_vector(vec, offsets, n_layers)
 
