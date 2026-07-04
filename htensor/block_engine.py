@@ -104,11 +104,16 @@ class BlockEngine:
 def train_adjoint(lat: Z2Lattice, vac_state: np.ndarray, target: np.ndarray,
                   center: int, n_layers: int = 2, seed: int = 11,
                   maxiter: int = 2000, inits=None,
-                  max_offset: int | None = None) -> dict:
+                  max_offset: int | None = None, l2: float = 0.0) -> dict:
     """L-BFGS-B with analytic adjoint gradients.  inits: list of start
     vectors; defaults to the lsq direction at several amplitudes plus one
     random start.  max_offset restricts the block window (locality: train
-    with a window the packet fits inside, so angles transfer)."""
+    with a window the packet fits inside, so angles transfer).
+
+    l2 > 0 adds an angle penalty l2*sum(theta^2): among the degenerate
+    parameter sets preparing the same state it selects small-angle
+    solutions, whose gate-by-gate creation path stays low-entanglement --
+    required for efficient MPS execution of the block at large volume."""
     import scipy.optimize
     from .wavepacket import lsq_init, params_from_vector
 
@@ -118,7 +123,7 @@ def train_adjoint(lat: Z2Lattice, vac_state: np.ndarray, target: np.ndarray,
 
     def cost_grad(vec):
         f, g = eng.fidelity_and_grad(vac_state, target, vec)
-        return 1.0 - f, -g
+        return 1.0 - f + l2 * np.dot(vec, vec), -g + 2 * l2 * vec
 
     if inits is None:
         direction = lsq_init(lat, vac_state, target, center, offsets, n_layers)

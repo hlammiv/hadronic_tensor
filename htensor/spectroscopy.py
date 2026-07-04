@@ -206,8 +206,10 @@ def meson_wavepacket(lat: Z2Lattice, band: dict, k0: float = 0.0,
 
 def electric_energy_profile(lat: Z2Lattice, psi: np.ndarray, vacuum: np.ndarray,
                             g2: float = 1.0) -> np.ndarray:
-    """Vacuum-subtracted electric (link) energy per spatial site: the string
-    of the meson shows up as a localized deficit in <sigma^x_link>."""
+    """Vacuum-subtracted electric (link) energy per spatial site.  The gauge
+    term is +(g2/2) sigma^x, the interacting vacuum favors <sigma^x> < 0,
+    and the meson's flux excitation raises the local electric energy, so the
+    profile is POSITIVE and peaked at the packet center."""
     out = np.empty(lat.nx)
     for x in range(lat.nx):
         val = 0.0
@@ -215,5 +217,5 @@ def electric_energy_profile(lat: Z2Lattice, psi: np.ndarray, vacuum: np.ndarray,
             op = exact.to_sparse(
                 pauli_term(lat.n_qubits, {lat.link_qubit(b): "X"}, g2 / 2))
             val += np.real(np.vdot(psi, op @ psi) - np.vdot(vacuum, op @ vacuum))
-        out[x] = -val  # deficit is positive energy
+        out[x] = val  # excitation energy above vacuum
     return out
