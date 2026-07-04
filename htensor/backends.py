@@ -24,6 +24,49 @@ from .measure import (CorrelatorData, split_current, controlled_pauli,
 _AER_BASIS = ["cx", "cz", "rz", "rx", "ry", "sx", "x", "h"]
 
 
+# ----------------------------------------------------------- MPS ring folding
+def ring_chain_order(lat: Z2Lattice, ancilla_after: int | None = None) -> list[int]:
+    """Chain order (list of logical qubits) folding the PBC ring in half:
+    [0, n-1, 1, n-2, ...].  Every ring-neighbor pair -- INCLUDING the seam
+    (n-1, 0) -- sits <= 2 apart in the chain, so Aer's MPS never inserts
+    long swap chains.  If ancilla_after is a logical system qubit, the
+    ancilla (logical index n) is placed directly after it in the chain."""
+    n = lat.n_qubits
+    order = []
+    for i in range(n // 2):
+        order += [i, n - 1 - i]
+    if n % 2:
+        order.append(n // 2)
+    if ancilla_after is not None:
+        order.insert(order.index(ancilla_after) + 1, n)
+    return order
+
+
+def _chain_perm(order: list[int]) -> dict[int, int]:
+    return {logical: chain for chain, logical in enumerate(order)}
+
+
+def permute_circuit(circ: QuantumCircuit, perm: dict[int, int],
+                    n_total: int) -> QuantumCircuit:
+    out = QuantumCircuit(n_total)
+    for inst in circ.data:
+        out.append(inst.operation,
+                   [perm[circ.find_bit(b).index] for b in inst.qubits])
+    return out
+
+
+def permute_pauli(op: SparsePauliOp, perm: dict[int, int],
+                  n_total: int) -> SparsePauliOp:
+    labels = []
+    nq = op.num_qubits
+    for lab in op.paulis.to_labels():
+        new = ["I"] * n_total
+        for q in range(nq):
+            new[n_total - 1 - perm[q]] = lab[nq - 1 - q]
+        labels.append("".join(new))
+    return SparsePauliOp(labels, op.coeffs)
+
+
 def _simulator(method: str, mps_max_bond: int | None, mps_trunc: float,
                max_threads: int):
     from qiskit_aer import AerSimulator
@@ -43,32 +86,52 @@ def hadamard_correlator_aer(lat: Z2Lattice, prep: QuantumCircuit,
                             method: str = "matrix_product_state",
                             mps_max_bond: int | None = None,
                             mps_trunc: float = 1e-12,
-                            max_threads: int = 4) -> CorrelatorData:
+                            max_threads: int = 4,
+                            fold: bool | None = None,
+                            stationary_1pt: bool = False) -> CorrelatorData:
     """Hadamard-test correlator grid via Aer with exact expectation values.
 
     One circuit per (insertion Pauli term, time); every probe observable is
     read from the same circuit via multiple save_expectation_value slots --
     the x-multiplexing that makes this protocol cheap.
+
+    fold=True (default for the MPS method) relabels qubits with the folded
+    ring order so the PBC seam and the ancilla are chain-local.
     """
     times = np.asarray(times, dtype=float)
     n_sys = lat.n_qubits
+    if fold is None:
+        fold = method == "matrix_product_state"
     sim = _simulator(method, mps_max_bond, mps_trunc, max_threads)
     id_a, terms_a = split_current(insert_op)
     probes_p = [_pauli_only(op) for op in probe_ops]
     id_b = np.array([split_current(op)[0] for op in probe_ops])
 
-    def run(circ, observables, qubits):
+    anc_site = min(terms_a[0][0]) if terms_a else 0
+    perm_sys = _chain_perm(ring_chain_order(lat)) if fold else None
+    perm_anc = _chain_perm(ring_chain_order(lat, ancilla_after=anc_site)) \
+        if fold else None
+
+    def run(circ, observables, perm):
+        n_total = circ.num_qubits
+        if perm is not None:
+            circ = permute_circuit(circ, perm, n_total)
+            observables = {lbl: permute_pauli(op, perm, n_total)
+                           for lbl, op in observables.items()}
         # transpile first: save instructions cannot pass the basis translator;
         # basis-only transpilation does no routing, so indices are stable
         tqc = transpile(circ, basis_gates=_AER_BASIS, optimization_level=1)
         for lbl, op in observables.items():
-            tqc.save_expectation_value(op, qubits, label=lbl)
+            tqc.save_expectation_value(op, list(range(n_total)), label=lbl)
         return sim.run(tqc).result().data()
 
     # ---- plain single-current expectations (disconnected/identity pieces)
+    # stationary_1pt: for (near-)eigenstate preps <J(t)> is t-independent --
+    # measure at t=0 and broadcast (halves the circuit count)
     probe_expect = np.empty((len(times), len(probe_ops)), dtype=complex)
     insert_expect = None
-    for i, t in enumerate(times):
+    t_list = times[:1] if stationary_1pt else times
+    for i, t in enumerate(t_list):
         qc = QuantumCircuit(n_sys)
         qc.compose(prep, inplace=True)
         n = max(1, int(np.ceil(abs(t) / dt_target))) if t != 0 else 0
@@ -76,10 +139,12 @@ def hadamard_correlator_aer(lat: Z2Lattice, prep: QuantumCircuit,
         obs = {f"p{j}": op for j, op in enumerate(probe_ops)}
         if i == 0:
             obs["ins"] = insert_op
-        data = run(qc, obs, list(range(n_sys)))
+        data = run(qc, obs, perm_sys)
         probe_expect[i] = [data[f"p{j}"] for j in range(len(probe_ops))]
         if i == 0:
             insert_expect = complex(data["ins"])
+    if stationary_1pt:
+        probe_expect[1:] = probe_expect[0]
     probe_p_expect = probe_expect - id_b[None, :]
 
     # ---- ancilla circuits
@@ -98,7 +163,7 @@ def hadamard_correlator_aer(lat: Z2Lattice, prep: QuantumCircuit,
             for j, bp in enumerate(probes_p):
                 obs[f"re{j}"] = _with_ancilla(bp, "X")
                 obs[f"im{j}"] = _with_ancilla(bp, "Y")
-            data = run(qc, obs, list(range(n_sys + 1)))
+            data = run(qc, obs, perm_anc)
             for j in range(len(probes_p)):
                 corr[i, j] += c_a * (np.real(data[f"re{j}"])
                                      + 1j * np.real(data[f"im{j}"]))
