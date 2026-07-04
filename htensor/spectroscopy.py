@@ -74,22 +74,32 @@ def _t2_phases(states: list[np.ndarray], energies: np.ndarray, lat: Z2Lattice,
 
 
 # ------------------------------------------------------------- meson band
-def meson_band(lat: Z2Lattice, m0, g2, eta, n_states: int | None = None) -> dict:
+def meson_band(lat: Z2Lattice, m0, g2, eta, n_states: int | None = None,
+               matrix_free: bool = False, ncv: int | None = None) -> dict:
     """Vacuum + lowest physical Q=0 states resolved by momentum.
 
     Returns {vacuum, e0, k, energy, states}: for each momentum k = 2 pi j / Nx
     the lowest excited state and energy gap; the single-meson band when the
     lowest excitation per momentum is one meson (true at strong-ish coupling).
+    matrix_free/ncv: see exact.lowest_physical_states (use above ~22 qubits);
+    with a small n_states only the low-|k| part of the band is resolved.
     """
     nx = lat.nx
     if n_states is None:
         n_states = 2 * nx + 4
-    energies, vecs = exact.lowest_physical_states(lat, m0, g2, eta, k=n_states)
+    energies, vecs = exact.lowest_physical_states(lat, m0, g2, eta, k=n_states,
+                                                  matrix_free=matrix_free,
+                                                  ncv=ncv)
     states = [vecs[:, i] for i in range(vecs.shape[1])]
     resolved, phases = _t2_phases(states, energies, lat)
     # recompute energies for resolved combinations (unchanged within clusters)
-    H = exact.to_sparse(ham.build_hamiltonian(lat, m0, g2, eta))
-    e_res = np.array([np.real(np.vdot(s, H @ s)) for s in resolved])
+    H_op = ham.build_hamiltonian(lat, m0, g2, eta)
+    if matrix_free:
+        e_res = np.array([np.real(np.vdot(s, exact.apply_pauli_sum(H_op, s)))
+                          for s in resolved])
+    else:
+        H = exact.to_sparse(H_op)
+        e_res = np.array([np.real(np.vdot(s, H @ s)) for s in resolved])
     order = np.argsort(e_res)
     resolved = [resolved[i] for i in order]
     e_res, phases = e_res[order], phases[order]
@@ -117,10 +127,10 @@ def meson_band(lat: Z2Lattice, m0, g2, eta, n_states: int | None = None) -> dict
 # ------------------------------------------------------------- wavepacket
 def _interp_op(lat: Z2Lattice, bond: int, kind: str):
     if kind == "cur":
-        return exact.to_sparse(cur.bond_current(lat, bond, eta=1.0))
+        return cur.bond_current(lat, bond, eta=1.0)
     if kind == "hop":
         from . import hamiltonian as _h
-        return exact.to_sparse(_h.hop_term(lat, bond, eta=1.0))
+        return _h.hop_term(lat, bond, eta=1.0)
     raise ValueError(kind)
 
 
@@ -134,7 +144,7 @@ def _packet_vector(lat: Z2Lattice, vac: np.ndarray, kind: str, parity: int,
         dd = pos - (x0 + 0.25)
         d = (dd + nx / 2) % nx - nx / 2
         f = np.exp(-d**2 / (4 * sigma_x**2)) * np.exp(1j * k0 * d)
-        out = out + f * (_interp_op(lat, 2 * x + parity, kind) @ vac)
+        out = out + f * exact.apply_pauli_sum(_interp_op(lat, 2 * x + parity, kind), vac)
     return out
 
 

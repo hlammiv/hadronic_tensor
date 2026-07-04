@@ -37,10 +37,13 @@ class BlockEngine:
     """Precomputed gate list for a (layers x kinds x offsets) block."""
 
     def __init__(self, lat: Z2Lattice, center: int, n_layers: int,
-                 offsets: list[int] | None = None):
+                 offsets: list[int] | None = None,
+                 max_offset: int | None = None):
         self.lat = lat
         self.n = lat.n_qubits
         self.offsets = window_offsets(lat.ns) if offsets is None else offsets
+        if max_offset is not None:
+            self.offsets = [o for o in self.offsets if abs(o) <= max_offset]
         self.n_layers = n_layers
         self.gates = []  # (key, generator matrix (2^k, 2^k), qubits, eigh cache)
         for l in range(n_layers):
@@ -75,34 +78,41 @@ class BlockEngine:
 
     def fidelity_and_grad(self, vac: np.ndarray, target: np.ndarray,
                           vec: np.ndarray):
-        """F = |<target|U(vec)|vac>|^2 and dF/dvec via adjoint sweep."""
-        fwd = [vac]
+        """F = |<target|U(vec)|vac>|^2 and dF/dvec via adjoint sweep.
+
+        Constant memory (3 live states): the pre-gate state is recomputed
+        backwards by unitary reversal instead of caching the forward pass,
+        so training volumes are limited by statevector size only
+        (ns = 12 -> 268 MB/state)."""
+        post = vac
         for gate, th in zip(self.gates, vec):
-            fwd.append(_apply_local(fwd[-1], self._unitary(gate, th),
-                                    gate[2], self.n))
-        o = np.vdot(target, fwd[-1])
+            post = _apply_local(post, self._unitary(gate, th), gate[2], self.n)
+        o = np.vdot(target, post)
         lam = target
         grad = np.empty(len(vec))
         for g in range(len(self.gates) - 1, -1, -1):
             gate, th = self.gates[g], vec[g]
-            # d/dth <lam|U_g|s_{g-1}> = <lam| (-i G) U_g |s_{g-1}> = <lam|(-iG)|s_g>
-            Gs = _apply_local(fwd[g + 1], gate[1], gate[2], self.n)
+            # d/dth <lam|U_g|s_pre> = <lam|(-i G) U_g|s_pre> = <lam|(-iG)|s_post>
+            Gs = _apply_local(post, gate[1], gate[2], self.n)
             grad[g] = 2 * np.real(np.conj(o) * np.vdot(lam, -1j * Gs))
-            lam = _apply_local(lam, self._unitary(gate, th).conj().T,
-                               gate[2], self.n)
+            Udag = self._unitary(gate, th).conj().T
+            post = _apply_local(post, Udag, gate[2], self.n)  # s_{g-1}
+            lam = _apply_local(lam, Udag, gate[2], self.n)
         return float(abs(o) ** 2), grad
 
 
 def train_adjoint(lat: Z2Lattice, vac_state: np.ndarray, target: np.ndarray,
                   center: int, n_layers: int = 2, seed: int = 11,
-                  maxiter: int = 2000, inits=None) -> dict:
+                  maxiter: int = 2000, inits=None,
+                  max_offset: int | None = None) -> dict:
     """L-BFGS-B with analytic adjoint gradients.  inits: list of start
     vectors; defaults to the lsq direction at several amplitudes plus one
-    random start."""
+    random start.  max_offset restricts the block window (locality: train
+    with a window the packet fits inside, so angles transfer)."""
     import scipy.optimize
     from .wavepacket import lsq_init, params_from_vector
 
-    eng = BlockEngine(lat, center, n_layers)
+    eng = BlockEngine(lat, center, n_layers, max_offset=max_offset)
     offsets = eng.offsets
     rng = np.random.default_rng(seed)
 

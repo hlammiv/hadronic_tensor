@@ -17,6 +17,66 @@ def to_sparse(op: SparsePauliOp) -> sp.csr_matrix:
     return op.to_matrix(sparse=True).tocsr()
 
 
+# ---------------------------------------------------------------- matrix-free
+def _pauli_terms(op: SparsePauliOp):
+    """(flip mask, sign mask, coeff*i^nY) per term; diagonal terms merged
+    separately.  P|i> = i^{nY} (-1)^{popcount(i & mz)} |i ^ mx>."""
+    n = op.num_qubits
+    diag_terms, offdiag = [], []
+    for lab, c in zip(op.paulis.to_labels(), op.coeffs):
+        mx = mz = 0
+        ph = complex(c)
+        for q in range(n):
+            ch = lab[n - 1 - q]
+            if ch in "XY":
+                mx |= 1 << q
+            if ch in "ZY":
+                mz |= 1 << q
+            if ch == "Y":
+                ph *= 1j
+        (diag_terms if mx == 0 else offdiag).append((mx, mz, ph))
+    return n, diag_terms, offdiag
+
+
+def apply_pauli_sum(op: SparsePauliOp, v: np.ndarray) -> np.ndarray:
+    """op @ v without building a matrix (any width that fits a statevector)."""
+    n, diag_terms, offdiag = _pauli_terms(op)
+    idx = np.arange(1 << n, dtype=np.uint64)
+    out = np.zeros(1 << n, dtype=complex)
+    for mx, mz, ph in diag_terms:
+        signs = 1.0 - 2.0 * (np.bitwise_count(idx & np.uint64(mz)) % 2)
+        out += ph * signs * v
+    for mx, mz, ph in offdiag:
+        src = idx ^ np.uint64(mx)
+        signs = 1.0 - 2.0 * (np.bitwise_count(src & np.uint64(mz)) % 2)
+        out += ph * signs * v[src]
+    return out
+
+
+def pauli_linear_operator(op: SparsePauliOp) -> spla.LinearOperator:
+    """Matrix-free LinearOperator for eigsh at 20-26 qubits.  The (usually
+    numerous, e.g. Q^2 penalty) diagonal terms are precomputed into a single
+    diagonal vector."""
+    n, diag_terms, offdiag = _pauli_terms(op)
+    N = 1 << n
+    idx = np.arange(N, dtype=np.uint64)
+    diag = np.zeros(N, dtype=complex)
+    for mx, mz, ph in diag_terms:
+        diag += ph * (1.0 - 2.0 * (np.bitwise_count(idx & np.uint64(mz)) % 2))
+    offdiag = [(np.uint64(mx), np.uint64(mz), ph) for mx, mz, ph in offdiag]
+
+    def matvec(v):
+        v = np.asarray(v).ravel()
+        out = diag * v
+        for mx, mz, ph in offdiag:
+            src = idx ^ mx
+            signs = 1.0 - 2.0 * (np.bitwise_count(src & mz) % 2)
+            out += ph * signs * v[src]
+        return out
+
+    return spla.LinearOperator((N, N), matvec=matvec, dtype=complex)
+
+
 def strong_coupling_vacuum(lat: Z2Lattice) -> np.ndarray:
     """Product state: even matter sites |0>, odd |1>, links |+>.
 
@@ -51,15 +111,27 @@ def penalized_hamiltonian(
 
 def lowest_physical_states(
     lat: Z2Lattice, m0: float, g2: float = 1.0, eta: float = 1.0, k: int = 4,
+    matrix_free: bool = False, ncv: int | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """(energies, states) of the k lowest eigenstates of H within the
     physical, Q=0 sector. Energies are of H itself (penalties subtracted by
-    evaluating <H> on the penalized eigenvectors)."""
-    Hp = to_sparse(penalized_hamiltonian(lat, m0, g2, eta))
-    H = to_sparse(ham.build_hamiltonian(lat, m0, g2, eta))
+    evaluating <H> on the penalized eigenvectors).
+
+    matrix_free=True avoids building sparse matrices (mandatory above ~22
+    qubits); ncv caps the Lanczos basis to bound RAM (ncv * 16 B * 2^n)."""
+    Hp_op = penalized_hamiltonian(lat, m0, g2, eta)
+    H_op = ham.build_hamiltonian(lat, m0, g2, eta)
     v0 = strong_coupling_vacuum(lat)
-    _, vecs = spla.eigsh(Hp, k=k, which="SA", v0=v0)
-    energies = np.array([np.real(np.vdot(v, H @ v)) for v in vecs.T])
+    if matrix_free:
+        Hp = pauli_linear_operator(Hp_op)
+        _, vecs = spla.eigsh(Hp, k=k, which="SA", v0=v0, ncv=ncv)
+        energies = np.array([np.real(np.vdot(v, apply_pauli_sum(H_op, v)))
+                             for v in vecs.T])
+    else:
+        Hp = to_sparse(Hp_op)
+        H = to_sparse(H_op)
+        _, vecs = spla.eigsh(Hp, k=k, which="SA", v0=v0, ncv=ncv)
+        energies = np.array([np.real(np.vdot(v, H @ v)) for v in vecs.T])
     order = np.argsort(energies)
     return energies[order], vecs[:, order]
 
