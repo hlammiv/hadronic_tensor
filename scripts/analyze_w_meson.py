@@ -53,7 +53,7 @@ x0 = analysis.ring_fold((np.arange(ns) - vc) / 2, lat.nx)
 grid = analysis.CorrelatorGrid(times, x0, G[:, :nJ0])
 t_full, c_full = analysis.complete_time(grid)
 q0 = np.arange(-1.0, 6.001, 0.04)
-ks = np.arange(0, lat.nx // 2 + 1)
+ks = np.arange(-(lat.nx // 2), lat.nx // 2 + 1)  # +-q1: boost asymmetry
 q1 = 2 * np.pi * ks / lat.nx
 W, spread = analysis.window_scan(t_full, x0, c_full, q0, q1,
                                  sigma_t=times[-1] / 3, sigma_x=lat.nx / 6)
@@ -73,7 +73,8 @@ axL.set_title(rf"$W^{{00}}(q^0,q^1)$ meson packet, $k_0={k0:.2f}$, "
 axL.grid(False)
 fig.colorbar(pm, ax=axL, pad=0.02)
 
-for i, j in enumerate([2, 5, 8, 12]):
+for i, j in enumerate([lat.nx // 2 + 2, lat.nx // 2 + 5,
+                       lat.nx // 2 + 8, lat.nx // 2 + 12]):
     axR.fill_between(q0, W.real[:, j] - spread[:, j] / 2,
                      W.real[:, j] + spread[:, j] / 2,
                      color=OI[i], alpha=0.22, lw=0)
