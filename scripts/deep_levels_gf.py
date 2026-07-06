@@ -105,9 +105,11 @@ elif sys.argv[1] == "run":
     basis = PhysicalBasis(lat)
     log(f"ns={ns} ({M0}, {G2}, {ETA}): physical dim {basis.dim}, "
         f"Q=0 block {int((basis.q == 0).sum())}")
-    gaps, phases, energies = deep_spectrum(lat, M0, G2, ETA, k=k)
+    gaps, phases, energies, refl = deep_spectrum(lat, M0, G2, ETA, k=k,
+                                                 refl=True)
     np.savez(f"data/deep_levels_{tag}ns{ns}.npz", gaps=gaps, phases=phases,
-             energies=energies, m0=M0, g2=G2, eta=ETA)
-    log(f"saved data/deep_levels_{tag}ns{ns}.npz ({len(gaps)} levels)")
+             energies=energies, refl=refl, m0=M0, g2=G2, eta=ETA)
+    log(f"saved data/deep_levels_{tag}ns{ns}.npz ({len(gaps)} levels, "
+        f"R labels on {int(np.isfinite(refl).sum())} P=0 levels)")
     for g, p in list(zip(gaps, phases))[:30]:
         log(f"  gap {g:8.4f}   T2 phase {p:+8.4f}")

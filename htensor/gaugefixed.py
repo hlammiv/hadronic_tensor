@@ -121,6 +121,56 @@ class PhysicalBasis:
                           shape=(self.dim, self.dim)).tocsr()
         return M
 
+    def reflection(self, shift: int = 0, stag_phase: bool = False
+                   ) -> sp.csr_matrix:
+        """Spatial reflection R: site n -> (shift - n) mod ns (shift even =
+        site-centered, odd = bond-centered), link m -> (shift - 1 - m) mod
+        ns, as a Fock-space operator R c_n R^dag = eta_n c_{r(n)}
+        (eta_n = (-1)^n if stag_phase).  The fermionic reordering sign is
+        the inversion parity of the occupied sites' images.  Which variant
+        commutes with H is convention -- select by commutator test
+        (select_reflection)."""
+        ns, dim = self.ns, self.dim
+        r = [(shift - n) % ns for n in range(ns)]
+        rl = [(shift - 1 - m) % ns for m in range(self.lat.n_links)]
+        zbit = [(self.z >> n) & 1 for n in range(ns)]
+        z2 = np.zeros(dim, dtype=np.int64)
+        for m in range(ns):                      # z'_m = z_{r(m)}
+            z2 |= zbit[r[m]] << m
+        par = np.zeros(dim, dtype=np.int64)      # inversion parity
+        for i in range(ns):
+            for j in range(i + 1, ns):
+                if r[i] > r[j]:                  # image order inverted
+                    par ^= zbit[i] & zbit[j]
+        phase = 1.0 - 2.0 * par
+        if stag_phase:
+            odd = np.zeros(dim, dtype=np.int64)
+            for n in range(1, ns, 2):
+                odd ^= zbit[n]
+            phase = phase * (1.0 - 2.0 * odd)
+        # links permute without fermionic signs; new holonomy = x'_0
+        h2 = self.xbit[:, rl.index(0)]
+        col = self.lut[(z2 << 1) | h2]
+        if np.any(col < 0):
+            raise ValueError("reflection left the physical sector")
+        return sp.coo_matrix((phase, (col, np.arange(dim))),
+                             shape=(dim, dim)).tocsr()
+
+    def select_reflection(self, H: sp.csr_matrix) -> tuple:
+        """Try (shift, stag_phase) variants; return (R, variant) for the one
+        that commutes with H (and satisfies R^2 = 1, R T R^dag = T^dag)."""
+        T = self.translation()
+        for shift in (0, 1, 2):
+            for stag in (False, True):
+                R = self.reflection(shift, stag)
+                if abs((H @ R - R @ H)).max() > 1e-9:
+                    continue
+                assert abs((R @ R) - sp.identity(self.dim)).max() < 1e-9
+                assert abs(R @ T @ R.conj().T.tocsr()
+                           - T.conj().T.tocsr()).max() < 1e-9
+                return R, (shift, stag)
+        raise ValueError("no reflection variant commutes with H")
+
     def translation(self) -> sp.csr_matrix:
         """Reduced T2 (one-spatial-site translation), matching
         spectroscopy.translate: optional string twist, then site n+2 -> n."""
@@ -146,10 +196,12 @@ class PhysicalBasis:
 
 
 def deep_spectrum(lat: Z2Lattice, m0, g2, eta, k: int | None = None,
-                  degeneracy_tol: float = 1e-6):
-    """(gaps, T2 phases, energies) in the physical Q=0 sector.
+                  degeneracy_tol: float = 1e-6, refl: bool = False):
+    """(gaps, T2 phases, energies[, R parities]) in the physical Q=0 sector.
 
-    k=None -> dense eigh, ALL levels; else sparse eigsh lowest k."""
+    k=None -> dense eigh, ALL levels; else sparse eigsh lowest k.
+    refl=True also returns the reflection parity for P = 0 levels
+    (NaN for P != 0, where R maps k -> -k instead of labeling)."""
     basis = PhysicalBasis(lat)
     sel = np.flatnonzero(basis.q == 0)
     H = basis.matrix(ham.build_hamiltonian(lat, m0, g2, eta))
@@ -164,14 +216,36 @@ def deep_spectrum(lat: Z2Lattice, m0, g2, eta, k: int | None = None,
         o = np.argsort(w)
         w, v = w[o], v[:, o]
     T = basis.translation()[sel][:, sel]
+    R = None
+    if refl:
+        Rfull, variant = basis.select_reflection(
+            basis.matrix(ham.build_hamiltonian(lat, m0, g2, eta)))
+        R = Rfull[sel][:, sel]
     phases = np.empty(len(w))
+    parities = np.full(len(w), np.nan)
     i = 0
     while i < len(w):
         j = i + 1
         while j < len(w) and w[j] - w[i] < degeneracy_tol:
             j += 1
-        block = v[:, i:j].conj().T @ (T @ v[:, i:j])
-        ev = np.linalg.eigvals(block)
-        phases[i:j] = np.sort(np.angle(ev))
+        blk = v[:, i:j]
+        tb = blk.conj().T @ (T @ blk)
+        ev, U = np.linalg.eig(tb)
+        order = np.argsort(np.angle(ev))
+        ev, U = ev[order], U[:, order]
+        phases[i:j] = np.angle(ev)
+        if R is not None:
+            resolved = blk @ U
+            p0 = [m for m in range(j - i) if abs(np.angle(ev[m])) < 1e-4]
+            if p0:
+                # R preserves the P=0 subspace of the cluster; diagonalize
+                # its block there (a P=0 pair can be R-mixed)
+                sub = resolved[:, p0]
+                q, _ = np.linalg.qr(sub)
+                rb = q.conj().T @ (R @ q)
+                pe = np.sort(np.real(np.linalg.eigvals(rb)))[::-1]
+                for m, val in zip(p0, pe):
+                    parities[i + m] = val
         i = j
-    return w - w[0], phases, w
+    out = (w - w[0], phases, w)
+    return out + ((parities,) if refl else ())

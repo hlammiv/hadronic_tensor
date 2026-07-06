@@ -1,19 +1,21 @@
-"""Two-channel MM/MM' finite-volume analysis in the inelastic window
-(task 16), using the 7-volume gauge-fixed spectra.
+"""Two-channel MM/MM' finite-volume analysis, final (parity-tagged).
 
-Window: M+M' < E < 2 E1(pi) (both channels open; MM closes at the lattice
-band edge).  Sector content at P = 0:
-  even:  MM and MM' coupled by a 2x2 unitary S(E) = (delta1, delta2, theta)
-         quantization: cos[(A+B)/2] = cos(2 theta) cos[(A-B)/2],
-         A = p1 L + 2 delta1,  B = p2 L + 2 delta2
-         (theta = 0 decouples to  p_i L + 2 delta_i = 2 pi n)
-  odd:   MM' only (identical-boson MM has no odd sector):
-         p2 L + 2 delta_odd = 2 pi n
-Dispersions E1(k), E2(k): clamped splines through the ns=20 single-particle
-bands.  Energy dependence: delta1 quadratic, delta2/theta/delta_odd linear
-in (E - 6.0).  Fit: symmetric assignment-free least squares (each observed
-level matched to the nearest predicted level), multi-start; leave-one-
-volume-out postdiction test on ns=10.
+Sector assignment is now EXACT: every P=0 level carries a reflection
+parity R (htensor.gaugefixed.PhysicalBasis.select_reflection; the k=0
+meson is R = -1, so MM levels are R = +1).  In the open-open window
+(min_p[E1+E2], 2 E1(pi)):
+
+  R = +1 : MM and MM'-even coupled by a 2x2 unitary S(E) =
+           (delta1, delta2, theta):
+           cos[(A+B)/2] = cos(2 theta) cos[(A-B)/2],
+           A = p1 L + 2 delta1,  B = p2 L + 2 delta2
+  R = -1 : MM'-odd alone: p2 L + 2 delta_odd = 2 pi n, i.e. pointwise
+           delta_odd = branch(-p2 L / 2 mod pi)  (no n needed mod pi)
+
+Sub-threshold R = +1 levels (5.85 < E < thr) anchor delta1 through the
+theta-decoupled MM condition.  Energy dependence: delta1 quadratic,
+delta2 and theta linear in (E - 6.0); physical-branch bounds; multi-start
+least squares; leave-one-volume-out postdiction on ns = 10.
 
   PYTHONPATH=. .venv/bin/python scripts/two_channel.py
 """
@@ -23,7 +25,7 @@ from scipy.interpolate import CubicSpline
 from scipy.optimize import brentq, least_squares
 
 VOLS = (8, 10, 12, 14, 16, 18, 20)
-LOO = 10                                  # leave-one-out volume
+LOO = 10
 
 
 def band_splines():
@@ -38,7 +40,7 @@ def band_splines():
         for kk in np.unique(np.round(k, 6)):
             m = np.isclose(k, kk)
             ks.append(kk)
-            es.append(e[m].min())        # lowest level at each |k| = band
+            es.append(e[m].min())
         out.append(CubicSpline(ks, es, bc_type=((1, 0.0), (1, 0.0))))
     return out
 
@@ -47,60 +49,68 @@ E1, E2 = band_splines()
 M, M2 = float(E1(0)), float(E2(0))
 THR = M + M2
 EDGE = 2 * float(E1(np.pi))
-print(f"bands: M = {M:.4f}, M' = {M2:.4f}; window ({THR:.4f}, {EDGE:.4f})")
+print(f"bands: M = {M:.4f}, M'(0) = {M2:.4f}; window ({THR:.4f}, {EDGE:.4f})")
 
 p1 = lambda E: brentq(lambda p: 2 * E1(p) - E, 1e-9, np.pi)
 p2 = lambda E: brentq(lambda p: E1(p) + E2(p) - E, 1e-9, np.pi)
 
-E_MM_LO = 5.85          # sub-threshold MM anchor window (same delta1(E))
-levels, levels_mm = {}, {}
+E_MM_LO = 5.85
+ev_lv, odd_lv, mm_lv = {}, {}, {}
 for ns in VOLS:
     d = np.load(f"data/deep_levels_ns{ns}.npz")
-    g, ph = d["gaps"], d["phases"]
+    g, ph, rf = d["gaps"], d["phases"], d["refl"]
     p0 = np.abs(np.angle(np.exp(1j * ph))) < 1e-4
-    sel = p0 & (g > THR + 2e-3) & (g < EDGE - 2e-3)
+    win = p0 & (g > THR + 2e-3) & (g < EDGE - 2e-3)
+    amb = win & (np.abs(rf) < 0.99)
+    assert not amb.any(), f"ambiguous parity at ns={ns}: {g[amb]}"
+    ev_lv[ns] = np.sort(g[win & (rf > 0.99)])
+    odd_lv[ns] = np.sort(g[win & (rf < -0.99)])
     mm = p0 & (g > E_MM_LO) & (g < THR - 2e-3)
-    levels[ns] = np.sort(g[sel])
-    levels_mm[ns] = np.sort(g[mm])
-    print(f"ns={ns} (L={ns//2}): {len(levels[ns])} window + "
-          f"{len(levels_mm[ns])} MM-anchor levels "
-          f"{np.round(levels_mm[ns], 4)} | {np.round(levels[ns], 4)}")
+    assert (d["refl"][mm] > 0.99).all(), f"odd MM anchor?! ns={ns}"
+    mm_lv[ns] = np.sort(g[mm])
+    print(f"ns={ns} (L={ns//2}): {len(mm_lv[ns])} MM-anchor + "
+          f"{len(ev_lv[ns])} even + {len(odd_lv[ns])} odd: "
+          f"{np.round(mm_lv[ns], 4)} | {np.round(ev_lv[ns], 4)} | "
+          f"{np.round(odd_lv[ns], 4)}")
 
+# ---------------- odd sector: pointwise, assignment-free mod pi ----------
+print("\nMM'-odd phase shifts (pointwise):")
+odd_pts = []
+for ns in VOLS:
+    for E in odd_lv[ns]:
+        dlt = (-p2(E) * (ns // 2) / 2 + np.pi / 2) % np.pi - np.pi / 2
+        odd_pts.append((ns, E, dlt))
+        print(f"  ns={ns}  E = {E:.4f}  delta_odd = {dlt:+.4f} rad")
 
+# ---------------- even sector: coupled 2x2 fit ---------------------------
 GRID = np.linspace(THR + 3e-4, EDGE - 3e-4, 1500)
 P1G = np.array([p1(E) for E in GRID])
 P2G = np.array([p2(E) for E in GRID])
-
-
-def predicted(params, L, grid=GRID):
-    d10, d11, d12, d20, d21, t0, t1, o0, o1 = params
-    x = grid - 6.0
-    A = P1G * L + 2 * (d10 + d11 * x + d12 * x**2)
-    B = P2G * L + 2 * (d20 + d21 * x)
-    th = t0 + t1 * x
-    F1 = np.cos((A + B) / 2) - np.cos(2 * th) * np.cos((A - B) / 2)
-    F2 = np.sin((P2G * L + 2 * (o0 + o1 * x)) / 2)
-    roots = []
-    for F in (F1, F2):
-        s = np.where(np.diff(np.sign(F)) != 0)[0]
-        for i in s:
-            e0, e1_, f0, f1_ = grid[i], grid[i + 1], F[i], F[i + 1]
-            roots.append(e0 - f0 * (e1_ - e0) / (f1_ - f0))
-    return np.sort(roots)
-
-
 GRID_MM = np.linspace(E_MM_LO + 3e-4, THR - 3e-4, 500)
 P1_MM = np.array([p1(E) for E in GRID_MM])
 
 
+def roots(F, grid):
+    s = np.where(np.diff(np.sign(F)) != 0)[0]
+    return np.array([grid[i] - F[i] * (grid[i + 1] - grid[i])
+                     / (F[i + 1] - F[i]) for i in s])
+
+
+def predicted(params, L):
+    d10, d11, d12, d20, d21, t0, t1 = params
+    x = GRID - 6.0
+    A = P1G * L + 2 * (d10 + d11 * x + d12 * x**2)
+    B = P2G * L + 2 * (d20 + d21 * x)
+    th = t0 + t1 * x
+    return np.sort(roots(np.cos((A + B) / 2)
+                         - np.cos(2 * th) * np.cos((A - B) / 2), GRID))
+
+
 def predicted_mm(params, L):
-    """Sub-threshold levels: theta-decoupled MM condition, same delta1."""
     d10, d11, d12 = params[:3]
     x = GRID_MM - 6.0
-    F = np.sin((P1_MM * L + 2 * (d10 + d11 * x + d12 * x**2)) / 2)
-    s = np.where(np.diff(np.sign(F)) != 0)[0]
-    return np.array([GRID_MM[i] - F[i] * (GRID_MM[i + 1] - GRID_MM[i])
-                     / (F[i + 1] - F[i]) for i in s])
+    return roots(np.sin((P1_MM * L
+                         + 2 * (d10 + d11 * x + d12 * x**2)) / 2), GRID_MM)
 
 
 def residuals(params, exclude=None):
@@ -108,34 +118,29 @@ def residuals(params, exclude=None):
     for ns in VOLS:
         if ns == exclude:
             continue
-        for obs, pred in ((levels[ns], predicted(params, ns // 2)),
-                          (levels_mm[ns], predicted_mm(params, ns // 2))):
-            if not len(obs):
-                continue
-            if not len(pred):
-                r.extend([1.0] * len(obs))
-                continue
+        for obs, pred in ((ev_lv[ns], predicted(params, ns // 2)),
+                          (mm_lv[ns], predicted_mm(params, ns // 2))):
             for E in obs:
-                r.append(E - pred[np.argmin(np.abs(pred - E))])
+                r.append(E - pred[np.argmin(np.abs(pred - E))]
+                         if len(pred) else 1.0)
     return np.array(r)
 
 
-# physical-branch bounds: phases in (-pi/2, pi/2) at E = 6.0, moderate
-# slopes/curvature (no mod-2pi wrapping), mixing angle in [0, pi/4]
-LB = [-1.6, -30, -300, -1.6, -30, 0.0, -30, -1.6, -30]
-UB = [+1.6, +30, +300, +1.6, +30, 0.8, +30, +1.6, +30]
+LB = [-1.6, -30, -300, -1.6, -30, 0.0, -15]
+UB = [+1.6, +30, +300, +1.6, +30, 0.785, +15]
 
 
 def fit(exclude=None):
     best = None
-    for d10 in (-0.5, 0.0, 0.5):
-        for t0 in (0.05, 0.3):
-            for o0 in (-0.5, 0.0, 0.5):
-                x0 = [d10, -1.0, 0.0, 0.0, -1.0, t0, 0.0, o0, -1.0]
+    for d10 in (-0.6, -0.2, 0.3):
+        for t0 in (0.05, 0.3, 0.6):
+            for d20 in (-0.5, 0.0, 0.5):
+                x0 = [d10, -1.0, 0.0, d20, -1.0, t0, 0.0]
                 try:
-                    res = least_squares(residuals, x0, kwargs={
-                        "exclude": exclude}, bounds=(LB, UB),
-                        method="trf", max_nfev=600)
+                    res = least_squares(residuals, x0,
+                                        kwargs={"exclude": exclude},
+                                        bounds=(LB, UB), method="trf",
+                                        max_nfev=800)
                 except Exception:
                     continue
                 if best is None or res.cost < best.cost:
@@ -146,28 +151,29 @@ def fit(exclude=None):
 res = fit()
 p = res.x
 r = residuals(p)
-print(f"\nfull fit: {len(r)} levels, rms residual "
-      f"{np.sqrt(np.mean(r**2)):.5f}, max |res| {np.abs(r).max():.5f}")
-names = ["d1(6.0)", "d1'", "d1''", "d2(6.0)", "d2'", "theta(6.0)",
-         "theta'", "dodd(6.0)", "dodd'"]
-for n, v in zip(names, p):
+n_lv = len(r)
+print(f"\neven-sector fit: {n_lv} levels, rms {np.sqrt(np.mean(r**2)):.5f},"
+      f" max |res| {np.abs(r).max():.5f}")
+for n, v in zip(["d1(6.0)", "d1'", "d1''", "d2(6.0)", "d2'",
+                 "theta(6.0)", "theta'"], p):
     print(f"  {n:11s} = {v:+.4f}")
-for E in (5.95, 6.00, 6.05, 6.10, 6.15):
+print("\n  E      delta_MM  delta_MM'  theta   eta=cos2th")
+for E in (6.04, 6.06, 6.08, 6.10, 6.12, 6.14):
     x = E - 6.0
-    print(f"  E={E:.2f}: delta_MM = {p[0]+p[1]*x+p[2]*x*x:+.3f}, "
-          f"delta_MM' = {p[3]+p[4]*x:+.3f}, theta = {p[5]+p[6]*x:+.3f} "
-          f"(inelasticity 1-cos2th = {1-np.cos(2*(p[5]+p[6]*x)):.3f}), "
-          f"delta_odd = {p[7]+p[8]*x:+.3f}")
+    th = p[5] + p[6] * x
+    print(f"  {E:.2f}  {p[0]+p[1]*x+p[2]*x*x:+8.4f} {p[3]+p[4]*x:+8.4f}"
+          f"  {th:+7.4f}  {np.cos(2*th):+.4f}")
 
 res_loo = fit(exclude=LOO)
 pred = predicted(res_loo.x, LOO // 2)
-print(f"\nleave-out ns={LOO} postdiction:")
-for E in levels[LOO]:
+print(f"\nleave-out ns={LOO} even-sector postdiction:")
+for E in ev_lv[LOO]:
     q = pred[np.argmin(np.abs(pred - E))]
     print(f"  observed {E:.4f}  predicted {q:.4f}  diff {E-q:+.4f}")
 
-np.savez("data/two_channel_fit.npz", params=p, names=names,
-         rms=float(np.sqrt(np.mean(r**2))), M=M, M2=M2, thr=THR, edge=EDGE,
-         loo_ns=LOO, loo_obs=levels[LOO],
-         loo_pred=[pred[np.argmin(np.abs(pred - E))] for E in levels[LOO]])
+np.savez("data/two_channel_fit.npz", params=p,
+         rms=float(np.sqrt(np.mean(r**2))), n_levels=n_lv,
+         odd_points=np.array(odd_pts), M=M, M2=M2, thr=THR, edge=EDGE,
+         loo_ns=LOO, loo_obs=ev_lv[LOO],
+         loo_pred=[pred[np.argmin(np.abs(pred - E))] for E in ev_lv[LOO]])
 print("\nsaved data/two_channel_fit.npz")
