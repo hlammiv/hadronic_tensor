@@ -52,26 +52,34 @@ print(f"bands: M = {M:.4f}, M' = {M2:.4f}; window ({THR:.4f}, {EDGE:.4f})")
 p1 = lambda E: brentq(lambda p: 2 * E1(p) - E, 1e-9, np.pi)
 p2 = lambda E: brentq(lambda p: E1(p) + E2(p) - E, 1e-9, np.pi)
 
-levels = {}
+E_MM_LO = 5.85          # sub-threshold MM anchor window (same delta1(E))
+levels, levels_mm = {}, {}
 for ns in VOLS:
     d = np.load(f"data/deep_levels_ns{ns}.npz")
     g, ph = d["gaps"], d["phases"]
-    sel = (np.abs(np.angle(np.exp(1j * ph))) < 1e-4) & \
-          (g > THR + 2e-3) & (g < EDGE - 2e-3)
+    p0 = np.abs(np.angle(np.exp(1j * ph))) < 1e-4
+    sel = p0 & (g > THR + 2e-3) & (g < EDGE - 2e-3)
+    mm = p0 & (g > E_MM_LO) & (g < THR - 2e-3)
     levels[ns] = np.sort(g[sel])
-    print(f"ns={ns} (L={ns//2}): {len(levels[ns])} window levels "
-          f"{np.round(levels[ns], 4)}")
+    levels_mm[ns] = np.sort(g[mm])
+    print(f"ns={ns} (L={ns//2}): {len(levels[ns])} window + "
+          f"{len(levels_mm[ns])} MM-anchor levels "
+          f"{np.round(levels_mm[ns], 4)} | {np.round(levels[ns], 4)}")
 
 
-def predicted(params, L, grid=np.linspace(THR + 3e-4, EDGE - 3e-4, 1500)):
+GRID = np.linspace(THR + 3e-4, EDGE - 3e-4, 1500)
+P1G = np.array([p1(E) for E in GRID])
+P2G = np.array([p2(E) for E in GRID])
+
+
+def predicted(params, L, grid=GRID):
     d10, d11, d12, d20, d21, t0, t1, o0, o1 = params
     x = grid - 6.0
-    A = np.array([p1(E) for E in grid]) * L + 2 * (d10 + d11 * x + d12 * x**2)
-    B = np.array([p2(E) for E in grid]) * L + 2 * (d20 + d21 * x)
+    A = P1G * L + 2 * (d10 + d11 * x + d12 * x**2)
+    B = P2G * L + 2 * (d20 + d21 * x)
     th = t0 + t1 * x
     F1 = np.cos((A + B) / 2) - np.cos(2 * th) * np.cos((A - B) / 2)
-    F2 = np.sin((np.array([p2(E) for E in grid]) * L
-                 + 2 * (o0 + o1 * x)) / 2)
+    F2 = np.sin((P2G * L + 2 * (o0 + o1 * x)) / 2)
     roots = []
     for F in (F1, F2):
         s = np.where(np.diff(np.sign(F)) != 0)[0]
@@ -81,29 +89,53 @@ def predicted(params, L, grid=np.linspace(THR + 3e-4, EDGE - 3e-4, 1500)):
     return np.sort(roots)
 
 
+GRID_MM = np.linspace(E_MM_LO + 3e-4, THR - 3e-4, 500)
+P1_MM = np.array([p1(E) for E in GRID_MM])
+
+
+def predicted_mm(params, L):
+    """Sub-threshold levels: theta-decoupled MM condition, same delta1."""
+    d10, d11, d12 = params[:3]
+    x = GRID_MM - 6.0
+    F = np.sin((P1_MM * L + 2 * (d10 + d11 * x + d12 * x**2)) / 2)
+    s = np.where(np.diff(np.sign(F)) != 0)[0]
+    return np.array([GRID_MM[i] - F[i] * (GRID_MM[i + 1] - GRID_MM[i])
+                     / (F[i + 1] - F[i]) for i in s])
+
+
 def residuals(params, exclude=None):
     r = []
     for ns in VOLS:
-        if ns == exclude or not len(levels[ns]):
+        if ns == exclude:
             continue
-        pred = predicted(params, ns // 2)
-        if not len(pred):
-            r.extend([1.0] * len(levels[ns]))
-            continue
-        for E in levels[ns]:
-            r.append(E - pred[np.argmin(np.abs(pred - E))])
+        for obs, pred in ((levels[ns], predicted(params, ns // 2)),
+                          (levels_mm[ns], predicted_mm(params, ns // 2))):
+            if not len(obs):
+                continue
+            if not len(pred):
+                r.extend([1.0] * len(obs))
+                continue
+            for E in obs:
+                r.append(E - pred[np.argmin(np.abs(pred - E))])
     return np.array(r)
+
+
+# physical-branch bounds: phases in (-pi/2, pi/2) at E = 6.0, moderate
+# slopes/curvature (no mod-2pi wrapping), mixing angle in [0, pi/4]
+LB = [-1.6, -30, -300, -1.6, -30, 0.0, -30, -1.6, -30]
+UB = [+1.6, +30, +300, +1.6, +30, 0.8, +30, +1.6, +30]
 
 
 def fit(exclude=None):
     best = None
-    for d10 in (-0.5, 0.0):
-        for t0 in (0.1, 0.4):
-            for o0 in (-0.3, 0.0, 0.3):
+    for d10 in (-0.5, 0.0, 0.5):
+        for t0 in (0.05, 0.3):
+            for o0 in (-0.5, 0.0, 0.5):
                 x0 = [d10, -1.0, 0.0, 0.0, -1.0, t0, 0.0, o0, -1.0]
                 try:
                     res = least_squares(residuals, x0, kwargs={
-                        "exclude": exclude}, method="lm", max_nfev=400)
+                        "exclude": exclude}, bounds=(LB, UB),
+                        method="trf", max_nfev=600)
                 except Exception:
                     continue
                 if best is None or res.cost < best.cost:

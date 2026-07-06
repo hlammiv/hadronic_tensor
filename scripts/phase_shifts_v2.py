@@ -23,8 +23,12 @@ k_ed = np.array([0.0, 1.2566, 1.5708, 2.0944, 2.5133, np.pi])
 e_ed = np.array([2.7451, 2.8188, 2.8560, 2.9275, 2.9886, 3.0778])
 E = CubicSpline(k_ed, e_ed, bc_type=((1, 0.0), (1, 0.0)))
 M = e_ed[0]
-MPRIME = 3.155          # band-2 minimum gap (ns=10/12 spectra)
-E_INEL = M + MPRIME     # MM' threshold: single-channel analysis below this
+MPRIME = 3.155          # band-2 minimum gap (at k = pi: the band is inverted)
+# P=0 MM' threshold is min_p [E1(p) + E2(p)] = E1(0) + E2(0) = 6.0304, NOT
+# M + min(E2) = 5.900: with the inverted band-2 dispersion the pair must
+# carry opposite momenta, so the naive threshold overquarantined the
+# 5.90-6.03 levels (they are elastic).  Derived in scripts/two_channel.py.
+E_INEL = 6.0304
 print(f"dispersion: clamped spline, E'(pi) = {float(E(np.pi, 1)):.4f}; "
       f"single-channel window: 2M = {2*M:.4f} .. M+M' = {E_INEL:.4f}")
 
