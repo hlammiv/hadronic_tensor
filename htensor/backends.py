@@ -81,7 +81,7 @@ def _simulator(method: str, mps_max_bond: int | None, mps_trunc: float,
 
 def prepare_state_mps(lat: Z2Lattice, prep: QuantumCircuit, anc_site: int,
                       cap: int = 512, trunc: float = 1e-10,
-                      max_threads: int = 4):
+                      max_threads: int = 4, circuit_transform=None):
     """Simulate the (expensive) preparation circuit ONCE at high accuracy and
     return (mps_data, perm) for reuse via set_matrix_product_state.
 
@@ -96,6 +96,8 @@ def prepare_state_mps(lat: Z2Lattice, prep: QuantumCircuit, anc_site: int,
     n_tot = lat.n_qubits + 1
     qc = permute_circuit(prep, perm, n_tot)
     tqc = transpile(qc, basis_gates=_AER_BASIS, optimization_level=1)
+    if circuit_transform is not None:
+        tqc = circuit_transform(tqc)
     tqc.save_matrix_product_state(label="mps")
     sim = AerSimulator(method="matrix_product_state",
                        matrix_product_state_max_bond_dimension=cap,
@@ -116,7 +118,8 @@ def hadamard_correlator_aer(lat: Z2Lattice, prep: QuantumCircuit,
                             fold: bool | None = None,
                             stationary_1pt: bool = False,
                             initial_mps=None,
-                            initial_perm: dict | None = None) -> CorrelatorData:
+                            initial_perm: dict | None = None,
+                            circuit_transform=None) -> CorrelatorData:
     """Hadamard-test correlator grid via Aer with exact expectation values.
 
     One circuit per (insertion Pauli term, time); every probe observable is
@@ -159,6 +162,8 @@ def hadamard_correlator_aer(lat: Z2Lattice, prep: QuantumCircuit,
         # transpile first: save/set instructions cannot pass the basis
         # translator; basis-only transpilation does no routing
         tqc = transpile(circ, basis_gates=_AER_BASIS, optimization_level=1)
+        if circuit_transform is not None:
+            tqc = circuit_transform(tqc)
         if use_init:
             full = QuantumCircuit(n_total)
             full.set_matrix_product_state(initial_mps)
