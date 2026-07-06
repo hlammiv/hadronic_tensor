@@ -48,7 +48,7 @@ M0, G2, ETA = 0.7, 1.1, 1.3
 NS, CENTER = 50, 24
 DT = 0.5
 T2_TIMES = [0.5, 1.0, 1.5, 2.0]
-T3_TIMES = [0.5, 1.0]
+T3_TIMES = [0.0, 0.5, 1.0]  # t=0: known-truth slice to calibrate damping
 T3_PROBES = [CENTER + o for o in (-4, -2, 0, 2, 4)]
 SHOTS = {1: 8192, 2: 8192, 3: 100_000}
 t0 = time.time()
