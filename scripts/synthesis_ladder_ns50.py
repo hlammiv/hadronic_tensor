@@ -45,8 +45,13 @@ insert = cur.charge_density(lat, CENTER)
 H50 = ham.build_hamiltonian(lat, M0, G2, ETA)
 anc_site = min(split_current(insert)[1][0][0])
 
+import os
+
 for delta, mode, seed in LADDER:
     tag = "exact" if delta is None else f"{mode[:4]}_pi{int(round(np.pi/delta))}"
+    if os.path.exists(f"data/synthladder_{tag}.npz"):
+        log(f"{tag}: already done, skipping")
+        continue
     tf = None if delta is None else \
         (lambda c, d=delta, m=mode, s=seed: synthesis.snap_angles(c, d, m, s))
     mps, perm = backends.prepare_state_mps(lat, prep, anc_site, cap=512,
