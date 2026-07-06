@@ -94,15 +94,20 @@ if sys.argv[1] == "validate":
     log("validation complete")
 
 elif sys.argv[1] == "run":
+    # run <ns> [k] [m0 g2 eta tag]   (tag -> deep_levels_<tag>_ns{ns}.npz)
     ns = int(sys.argv[2])
     k = int(sys.argv[3]) if len(sys.argv) > 3 else None
+    tag = ""
+    if len(sys.argv) > 4:
+        M0, G2, ETA = map(float, sys.argv[4:7])
+        tag = sys.argv[7] + "_"
     lat = Z2Lattice(ns, pbc=True)
     basis = PhysicalBasis(lat)
-    log(f"ns={ns}: physical dim {basis.dim}, "
+    log(f"ns={ns} ({M0}, {G2}, {ETA}): physical dim {basis.dim}, "
         f"Q=0 block {int((basis.q == 0).sum())}")
     gaps, phases, energies = deep_spectrum(lat, M0, G2, ETA, k=k)
-    np.savez(f"data/deep_levels_ns{ns}.npz", gaps=gaps, phases=phases,
+    np.savez(f"data/deep_levels_{tag}ns{ns}.npz", gaps=gaps, phases=phases,
              energies=energies, m0=M0, g2=G2, eta=ETA)
-    log(f"saved data/deep_levels_ns{ns}.npz ({len(gaps)} levels)")
+    log(f"saved data/deep_levels_{tag}ns{ns}.npz ({len(gaps)} levels)")
     for g, p in list(zip(gaps, phases))[:30]:
         log(f"  gap {g:8.4f}   T2 phase {p:+8.4f}")

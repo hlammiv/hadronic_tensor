@@ -28,7 +28,8 @@ E_INEL = M + MPRIME     # MM' threshold: single-channel analysis below this
 print(f"dispersion: clamped spline, E'(pi) = {float(E(np.pi, 1)):.4f}; "
       f"single-channel window: 2M = {2*M:.4f} .. M+M' = {E_INEL:.4f}")
 
-for ns in (8, 10, 12):
+rows = []  # (ns, E2, p, n, delta)
+for ns in (8, 10, 12, 14, 16, 18, 20):
     d = np.load(f"data/deep_levels_ns{ns}.npz")
     gaps, phases = d["gaps"], d["phases"]
     L = ns // 2
@@ -50,5 +51,10 @@ for ns in (8, 10, 12):
         p = brentq(lambda q: 2 * E(q) - E2, 1e-9, np.pi)
         delta = (2 * np.pi * n - p * L) / 2
         delta = (delta + np.pi / 2) % np.pi - np.pi / 2  # branch (-pi/2, pi/2]
+        rows.append((ns, E2, p, n, delta))
         print(f"    E2 = {E2:.4f}  p = {p:.4f}  n = {n}  "
               f"delta = {delta:+.4f} rad ({np.degrees(delta):+6.1f} deg)")
+
+np.savez("data/phase_shifts_6vol.npz", rows=np.array(rows),
+         columns="ns,E2,p,n,delta", M=M, MPRIME=MPRIME)
+print(f"\nsaved data/phase_shifts_6vol.npz ({len(rows)} points)")
