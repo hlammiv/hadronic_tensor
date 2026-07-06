@@ -28,7 +28,7 @@ E_INEL = M + MPRIME     # MM' threshold: single-channel analysis below this
 print(f"dispersion: clamped spline, E'(pi) = {float(E(np.pi, 1)):.4f}; "
       f"single-channel window: 2M = {2*M:.4f} .. M+M' = {E_INEL:.4f}")
 
-for ns in (8, 10):
+for ns in (8, 10, 12):
     d = np.load(f"data/deep_levels_ns{ns}.npz")
     gaps, phases = d["gaps"], d["phases"]
     L = ns // 2
