@@ -49,13 +49,20 @@ import os
 import sys
 
 # optional worker split: argv[1] in {0,1} takes alternating ladder points
-# (skip-existing logic keeps workers from redoing finished points)
-if len(sys.argv) > 1:
+# (skip-existing logic keeps workers from redoing finished points).
+# single-point seed-ensemble mode: argv = point <pi_denom> <mode> <seed>
+SUFFIX = ""
+if len(sys.argv) == 5 and sys.argv[1] == "point":
+    _d, _m, _s = int(sys.argv[2]), sys.argv[3], int(sys.argv[4])
+    LADDER = [(np.pi / _d, _m, _s)]
+    SUFFIX = f"_s{_s}"
+elif len(sys.argv) > 1:
     half = int(sys.argv[1])
     LADDER = [pt for i, pt in enumerate(LADDER) if i % 2 == half]
 
 for delta, mode, seed in LADDER:
-    tag = "exact" if delta is None else f"{mode[:4]}_pi{int(round(np.pi/delta))}"
+    tag = ("exact" if delta is None
+           else f"{mode[:4]}_pi{int(round(np.pi/delta))}") + SUFFIX
     if os.path.exists(f"data/synthladder_{tag}.npz"):
         log(f"{tag}: already done, skipping")
         continue
