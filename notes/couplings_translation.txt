@@ -1,0 +1,57 @@
+===== KEY: v2:33d6ac0e380c27a7272380cfb4843fb04fdcf24341f3b3204c9a644c4610961d =====
+# Lattice parameters of the three Z2-LGT comparison papers (verified against arXiv full texts)
+
+## 0. Our reference convention
+H_ours = (g2/2) Σ_links σ^x − (m0/2) Σ_n (−1)^n Z_n + (eta/4) Σ_n (X_n X_{n+1} + Y_n Y_{n+1}) σ^z_link, PBC, explicit link qubits, (m0, g2, eta) = (0.7, 1.1, 1.3).
+Fermionic equivalent under standard JW: H_ours = (eta/2) Σ (ξ†_n Z_{g,n} ξ_{n+1} + h.c.) + m0 Σ (−1)^n ξ†_n ξ_n + (g2/2) Σ X_{g,n}. Our dimensionless couplings in "hopping = 1/2" units: m0/eta = 0.5385, g2/(2 eta) = 0.4231.
+
+## 1. Davoudi–Hsieh–Kadam, arXiv:2402.00840 (Quantum 8, 1520)
+- Hamiltonian (their Eq. 1, verbatim from HTML): H = (1/2) Σ_{n∈Γ} (ξ†_n U_n ξ_{n+a} + H.c.) + a m_f Σ (−1)^{n/a} ξ†_n ξ_n + a ε Σ f(E_n), with f(E)=E for Z2; U = σ̃^x, E = σ̃^z on links; a=1; **PBC** ("We consider periodic boundary conditions throughout this paper"); fixed charge sector Q = N_P (half filling).
+- Couplings: **m_f = 1.0, ε = −0.3** (6-site Z2 demonstration; same values reused in the follow-up paper).
+- Lattice sizes: N = 6 and N = 10 staggered sites (N_P = 3, 5 physical sites). Hardware: Quantinuum H1-1, 12+1 = 13 qubits, up to 308 entangling gates.
+- Single-meson momentum sectors optimized: N=6: k ∈ {−π/3, 0, π/3}; N=10: k ∈ {−2π/5, −π/5, 0, π/5, 2π/5} (i.e., k = 2πj/N on the *staggered* lattice, half Brillouin zone). Fidelities F > 0.98 for all k.
+- Meson masses: **no numerical meson-mass/dispersion values quoted** (optimization reported via fidelities only).
+- Wavepacket: Ψ(k) = N exp(−ikμ) exp(−(k−k0)²/4σ²); example and hardware run use **σ = π/6, μ = 3, k0 = 0** (σ = π/10 also used in a circuit-cost study; k0 scanned in one emulator plot).
+- Scattering observables: **none** — wavepacket preparation only.
+
+## 2. Davoudi–Hsieh–Kadam, arXiv:2505.20408 ("Quantum computation of hadron scattering...")
+- Hamiltonian (their Eq. 5): aH = (1/2) Σ (ξ†_n σ̃^x_n ξ_{n+a} + H.c.) + a m_f Σ (−1)^{n/a} ξ†_n ξ_n + a ε Σ σ̃^z_n. Same convention as paper 1; **PBC**, Q = N_P sector. Qubit form after JW + "minimal gauge formalism" (all links but one eliminated via Gauss law; their Eqs. 16–17): H^h = (1/4) Σ_{n=0}^{N−2} (X_n X_{n+1} + Y_n Y_{n+1}) + (α_N/4)(X_{N−1} σ̃^x_{N−1} X_0 + Y_{N−1} σ̃^x_{N−1} Y_0), α_N = (−1)^{N_P+1}; H^m = (m_f/2) Σ (−1)^{n+1} σ^z_n; H^ε = ε σ̃^z_{N−1} + ε Σ_{n=0}^{N−2} γ_n σ̃^z_{N−1} (Π_{j=0}^n σ^z_j). Note H^m = −(m_f/2) Σ (−1)^n σ^z, i.e., **identical qubit mass term to ours**, and hopping (XX+YY)/4 identical to ours with the link σ^z rotated away (their electric term becomes JW-string non-local; ours stays local because we keep explicit link qubits).
+- Couplings: **m_f = 1.0, ε = −0.3** ("the parameters used in our previous work"; chosen so ⟨H^h⟩/⟨H^m+H^ε⟩ ≈ 0.221 in the vacuum for both sizes). Appendix VQE checks also probe m_f = 0.1, 0.3 with ε = −0.1.
+- Lattice sizes: N = 10 staggered sites (N_P = 5) → **11 system qubits** (N matter + 1 gauge); N = 26 (N_P = 13) → **27 system qubits**. Hardware: IonQ Forte; two-wavepacket collision dynamics simulated only for N_P = 5; up to three wavepackets prepared for N_P = 13. State-prep circuits with ancilla: 13/12 qubits (N_P=5), 29/28 (N_P=13). Second-order Trotter evolution.
+- Meson masses: **no numerical dispersion/mass values quoted** (VQE tables give ansatz parameters and fidelities only).
+- Wavepackets (their Eq. 38, Ψ_i(k) = N exp(−ikμ_i) exp(−(k−k̄_i)²/4σ_i²); Table 2): N_P = 5: **σ1 = σ2 = 7π/20, k̄1 = +2π/5, μ1 = 2, k̄2 = −2π/5, μ2 = 7**, overlap (Ψ2|Ψ1) = 0.0666. N_P = 13: **σ = 3π/13, k̄ = ±2π/13, μ1 = 6, μ2 = 19**, overlap 0.0104; third wavepacket: μ3 = 13, σ3 = 3π/13, k̄3 = 2π/13. Always k̄1 = −k̄2 and |μ1−μ2| = N_P (positions in staggered-site units).
+- Scattering observables: time evolution of **local staggered fermion density and electric field** (hardware, early times), and the **return probability** R(t) = |⟨Ψ1,Ψ2|U(t)|Ψ1,Ψ2⟩|² (a diagonal S-matrix element, via Hadamard test). **No phase shifts, no time delays, no inelasticity extraction** (these are named only as future targets).
+
+## 3. Chai–Guo–Kühn, arXiv:2505.21240
+- Hamiltonian (their Eq. 1, verbatim): H_kin = (1/2a) Σ_{n=1}^{L} (ξ†_n Z_{g,n} ξ_{n+1} + h.c.); H_mass = m Σ (−1)^n ξ†_n ξ_n; H_el = ε Σ_{n=1}^{L} X_{g,n}; a = 1; **PBC** ("site L+1 is identified with 1"); Gauss law G_n = X_{g,n−1} e^{iπQ_n} X_{g,n} = 1. **Their link convention is literally identical to ours** (Z_g in hopping, +ε X_g electric); explicit link qubits kept, as we do.
+- Couplings: spectra at m = 0.1 with ε = 1.0, 0.2, 0.1. Scattering runs: **elastic: (m, ε) = (0.1, 1.0), k̄ = 6×2π/L; inelastic: (0.1, 0.2) with k̄ = 4, 6, 8 ×2π/L, and (0.2, 0.2) with k̄ = 8×2π/L.**
+- Lattice: **L = 30 staggered matter sites (+30 links) = 60 qubits**, MPS/TEBD classical simulation with second-order Trotter (algorithm/proposal paper; Givens-rotation circuits counted but not run on hardware).
+- Meson masses: only **graphical** (their Fig. 2; "the data for k = 0 corresponds to the meson's mass in units of the lattice spacing"). ε = 1.0: first 28 excitations are all vector mesons; ε = 0.2 and 0.1: an additional scalar-meson branch appears (masses not tabulated numerically). Vector-meson momentum support Λ* = (2π/L)×{−13..14} at ε = 1.0; (2π/L)×{−9..9} vector and {−4..4} scalar at ε = 0.2.
+- Wavepackets: φ(k) ∝ e^{−ik x̄} e^{−(k−k̄)²/4σ_k²} built from QSE vector-meson (C = −1) creation operators; **σ_k = 2π/L ≈ 0.2094; x̄1 = 8, x̄2 = 23; k̄1 = −k̄2 = k̄** as above.
+- Scattering observables: post-collision **staggered fermion density Δ⟨χ_n⟩ and electric field Δ⟨X_{g,n}⟩**, **flux-string length distribution P_l**, **energy transfer** δE_B(t) among kinetic/mass/electric parts, **vector & scalar meson numbers** ρ_c(t) = Σ_k ⟨b†_{k,c} b_{k,c}⟩ (particle production / inelasticity proxy), and **vacuum-subtracted bipartite entanglement entropy** ΔS(t). **No phase shifts or time delays.**
+
+## Translation table: their parameters → our (m0, g2, eta)
+All three papers fix the fermionic hopping coefficient to 1/2 (a = 1); ours is eta/2. So H_theirs = H_ours/eta with the identifications m_theirs = m0/eta and ε_theirs = g2/(2 eta). Equivalently, their (m, ε) at our eta = 1.3:
+
+| Paper | their (m, ε) | our (m0, g2, eta) equivalent | our dimensionless (m0/eta, g2/2eta) = (0.538, 0.423) vs theirs |
+|---|---|---|---|
+| DHK 2402.00840 & 2505.20408 | m_f = 1.0, ε = −0.3 | (m0, g2, eta) = (1.30, 0.78, 1.3) [after ε-sign flip, see below] | (1.0, 0.30) — heavier fermion, weaker electric coupling than ours |
+| CGK elastic | m = 0.1, ε = 1.0 | (0.13, 2.60, 1.3) | (0.1, 1.0) — much lighter fermion, much stronger coupling |
+| CGK inelastic A | m = 0.1, ε = 0.2 | (0.13, 0.52, 1.3) | (0.1, 0.2) |
+| CGK inelastic B | m = 0.2, ε = 0.2 | (0.26, 0.52, 1.3) | (0.2, 0.2) |
+| CGK spectrum-only | m = 0.1, ε = 0.1 | (0.13, 0.26, 1.3) | (0.1, 0.1) |
+
+Inverse map: given our (m0, g2, eta), their couplings are m_theirs = m0/eta, ε_theirs = g2/(2 eta). Our point corresponds to (m, ε) = (0.538, 0.423) in their units — **none of the three papers simulates our coupling point**; prediction tables must be recomputed at their couplings, not read across.
+
+## Convention differences and flags (honest ambiguities)
+1. **DHK link basis is Hadamard-rotated relative to ours**: they take U = σ̃^x, E = σ̃^z; we and CGK take U = σ^z, E = σ^x. Pure relabeling, no physics change.
+2. **DHK's ε is negative (−0.3)**. In Z2, conjugation by Π_links σ̃^x flips E → −E and leaves U invariant, so the spectrum at ε and −ε is identical; the table above uses |ε|. If one compares signed electric-field expectation values (e.g., their ⟨σ̃^z⟩ plots), the sign convention of "flux excited vs unexcited" is opposite ours.
+3. **Hopping sign** is + in all three papers and in ours (eta > 0); in any case ξ_n → (−1)^n ξ_n flips it, so it is convention-irrelevant.
+4. **Mass-term sublattice labeling**: DHK qubit form −(m_f/2)Σ(−1)^n σ^z matches ours exactly; but which sublattice hosts particles vs antiparticles (Dirac-sea filling f_n convention) can differ by a one-site shift. Physically irrelevant (translation), matters only when comparing site-resolved density plots.
+5. **Gauge-field encoding differs**: DHK 2505.20408 gauge-fix to a single link qubit (N+1 qubits, non-local JW-string electric term); we and CGK keep all link qubits. Same physics, different circuit locality — relevant when comparing qubit counts and when quoting "electric field on link n" (theirs is a reconstructed string operator).
+6. **Momentum-unit ambiguity (factor-of-2 risk)**: DHK quote k = 2πj/N on the *staggered* lattice restricted to the half zone |k| ≤ π/2 (physical translation = 2 staggered sites); CGK quote k̄ in 2π/L units with L staggered sites and a vector band spanning the full zone (−π, π]; our band momenta run to π. Before placing their k̄ values on our dispersion E(k), confirm whether our k is per staggered or per physical lattice spacing. Numerically: DHK's k̄ = 2π/5 (N_P = 5) coincides with our boosted k̄ = 2π/5 only if both use staggered-lattice units.
+7. **Wavepacket width conventions**: all three use momentum-space Gaussians exp(−(k−k̄)²/4σ_k²), so the position-space width is σ_x = 1/(2σ_k): DHK-2402: σ = π/6 → σ_x ≈ 0.95; DHK-2505: σ = 7π/20 → σ_x ≈ 0.455 (N_P=5) and 3π/13 → σ_x ≈ 0.69 (N_P=13); CGK: σ_k = 2π/30 → σ_x ≈ 2.39 staggered sites. Ours is quoted in position space, σ_x = 0.75 — closest to DHK's N_P = 13 setting; CGK's packets are much broader in position space.
+8. **Meson masses**: none of the three papers tabulates numerical meson masses or E(k); CGK show them only graphically (their Fig. 2, L = 30, m = 0.1, ε = 1.0/0.2/0.1). Any mass comparison for prediction tables requires digitizing their Fig. 2 or recomputing at their couplings.
+9. **Observables overlap with ours**: no paper reports phase shifts, time delays, or quantitative inelasticity; CGK come closest (meson-number production, energy transfer, entropy, post-collision densities), DHK-2505 give return probability plus local densities, DHK-2402 is preparation-only. Our finite-volume phase shifts δ(p) at their couplings would be genuinely new predictions for all three setups.
+
+Sources: arxiv.org/abs+html 2402.00840v3, 2505.20408v1, 2505.21240v1 (equations and numbers quoted verbatim from the arXiv HTML full texts; downloaded copies at /tmp/claude-1000/-home-hlamm-Desktop-QC-hadronic-tensor/fb5de832-5f2a-4241-8c29-2ea520bb7131/scratchpad/{dhk1,dhk2,cgk}.txt).

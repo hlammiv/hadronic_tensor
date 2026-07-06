@@ -48,15 +48,20 @@ print(f"continuity check (raw data): max|dC00/dt + div C10| = {num:.4f}, "
       f"max|dC00/dt| = {den:.4f}, ratio = {num/den:.3f} "
       f"(expect ~O(dt^2 + Trotter) ~ few %)")
 
-# ---------------- W^{00}
+# ---------------- W^{00} (one-sided transform: the hermiticity completion is
+# invalid for wavepacket states -- see notes/adversarial_review_2026-07-06.txt
+# finding A-F1 and the ridge-model validation record)
+from scripts_helpers_ridge import onesided_ft
+
 x0 = analysis.ring_fold((np.arange(ns) - vc) / 2, lat.nx)
-grid = analysis.CorrelatorGrid(times, x0, G[:, :nJ0])
-t_full, c_full = analysis.complete_time(grid)
 q0 = np.arange(-1.0, 6.001, 0.04)
 ks = np.arange(-(lat.nx // 2), lat.nx // 2 + 1)  # +-q1: boost asymmetry
 q1 = 2 * np.pi * ks / lat.nx
-W, spread = analysis.window_scan(t_full, x0, c_full, q0, q1,
-                                 sigma_t=times[-1] / 3, sigma_x=lat.nx / 6)
+Ws = [onesided_ft(times, x0, G[:, :nJ0], q0, q1,
+                  f * times[-1] / 3, f * lat.nx / 6, 0.5, 0.5)
+      for f in (0.75, 1.0, 1.5)]
+W = Ws[1].astype(complex)
+spread = np.ptp(np.stack(Ws), axis=0)
 print(f"W^00: max|Im|/max|Re| = {np.abs(W.imag).max()/np.abs(W.real).max():.4f}")
 np.savez(path.replace(".npz", "_W.npz"), q0=q0, q1=q1, W=W, spread=spread, k0=k0)
 
