@@ -112,6 +112,7 @@ def penalized_hamiltonian(
 def lowest_physical_states(
     lat: Z2Lattice, m0: float, g2: float = 1.0, eta: float = 1.0, k: int = 4,
     matrix_free: bool = False, ncv: int | None = None,
+    maxiter: int | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """(energies, states) of the k lowest eigenstates of H within the
     physical, Q=0 sector. Energies are of H itself (penalties subtracted by
@@ -122,9 +123,14 @@ def lowest_physical_states(
     Hp_op = penalized_hamiltonian(lat, m0, g2, eta)
     H_op = ham.build_hamiltonian(lat, m0, g2, eta)
     v0 = strong_coupling_vacuum(lat)
+    if maxiter is None:
+        # scipy's default (10*n) overflows ARPACK's int32 above ~2^27
+        # dimensions (ARPACK error -4); cap explicitly
+        maxiter = int(min(10 * (1 << lat.n_qubits), 100_000))
     if matrix_free:
         Hp = pauli_linear_operator(Hp_op)
-        _, vecs = spla.eigsh(Hp, k=k, which="SA", v0=v0, ncv=ncv)
+        _, vecs = spla.eigsh(Hp, k=k, which="SA", v0=v0, ncv=ncv,
+                             maxiter=maxiter)
         energies = np.array([np.real(np.vdot(v, apply_pauli_sum(H_op, v)))
                              for v in vecs.T])
     else:
