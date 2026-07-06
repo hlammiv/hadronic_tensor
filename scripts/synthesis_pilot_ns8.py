@@ -56,20 +56,25 @@ insert = cur.charge_density(lat, vc)
 x = analysis.ring_fold((np.arange(lat.ns) - vc) / 2, lat.nx)
 
 
+def _transform(c, delta, mode, seed):
+    if delta is None:
+        return c
+    if mode == "gridsynth":
+        return synthesis.gridsynth_substitute(c, delta)  # delta plays eps
+    return synthesis.snap_angles(c, delta, mode, seed)
+
+
 def pipeline(delta=None, mode="round", seed=0):
-    """Snapped (or exact for delta=None) pipeline -> (<H> gap, W ridge)."""
+    """Snapped/synthesized (or exact) pipeline -> (<H> gap, W ridge)."""
     def prep_state():
-        c = prep_t if delta is None else synthesis.snap_angles(
-            prep_t, delta, mode, seed)
-        return np.asarray(Statevector.from_instruction(c))
+        return np.asarray(Statevector.from_instruction(
+            _transform(prep_t, delta, mode, seed)))
 
     def evo_factory(t):
         n = max(1, int(np.ceil(abs(t) / 0.1))) if t else 0
         c = trotter.trotter_circuit(lat, M0, G2, ETA, t, n)
         c = transpile(c, basis_gates=BASIS, optimization_level=1)
-        if delta is not None:
-            c = synthesis.snap_angles(c, delta, mode, seed)
-        return c.to_instruction()
+        return _transform(c, delta, mode, seed).to_instruction()
 
     psi = prep_state()
     gap = float(np.real(np.vdot(psi, Hs @ psi))) - e_vac_ex
@@ -79,11 +84,26 @@ def pipeline(delta=None, mode="round", seed=0):
     return gap, W[:, 0]
 
 
+import sys
+GRIDSYNTH = len(sys.argv) > 1 and sys.argv[1] == "gridsynth"
+if GRIDSYNTH:  # verify approximants against Rz first
+    for th in (0.7, -0.33, 1.9):
+        for eps in (1e-2, 1e-3, 1e-4):
+            U = synthesis.gridsynth_unitary(th, eps)
+            rz = np.diag([np.exp(-0.5j * th), np.exp(0.5j * th)])
+            d = synthesis._phase_dist(U, rz)
+            assert d < eps, (th, eps, d)
+    print("gridsynth approximants verified within eps", flush=True)
+
 gap0, W0 = pipeline(None)
 print(f"exact: gap = {gap0:.4f}, ridge max = {W0.max():.4f}", flush=True)
 rows = []
-for delta in DELTAS:
-    for mode, seeds in (("round", [0]), ("stochastic", [1, 2])):
+LADDER = ([(e, "gridsynth", [0]) for e in (1e-2, 1e-3, 1e-4)]
+          if GRIDSYNTH else
+          [(d, m, s) for d in DELTAS
+           for m, s in (("round", [0]), ("stochastic", [1, 2]))])
+for delta, mode, seeds in LADDER:
+    if True:
         for s in seeds:
             gap, W = pipeline(delta, mode, s)
             err = float(np.sqrt(np.mean((W - W0) ** 2)) / np.abs(W0).max())
@@ -91,8 +111,8 @@ for delta in DELTAS:
             print(f"delta=pi/{np.pi/delta:>5.0f} {mode:10s} seed={s}: "
                   f"gap = {gap:+.4f} (exact {gap0:.4f}), "
                   f"ridge rms err = {err:.4f}", flush=True)
-np.savez("data/synthesis_pilot_ns8.npz",
+np.savez("data/synthesis_pilot_ns8_gs.npz" if GRIDSYNTH else "data/synthesis_pilot_ns8.npz",
          rows=np.array([(r[0], 0 if r[1] == 'round' else 1, r[2], r[3], r[4])
                         for r in rows]),
          gap0=gap0, W0=W0, q0=Q0, n_rot=n_rot, n_nc=n_nc)
-print("saved data/synthesis_pilot_ns8.npz")
+print("saved pilot npz")
