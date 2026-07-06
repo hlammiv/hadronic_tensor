@@ -1,0 +1,27 @@
+# m0=0.7, g2=1.1, eta=1.3; ns=8 (17 qubits, statevector pilot)
+# source: data/synthesis_pilot_ns8.npz (scripts/synthesis_pilot_ns8.py)
+# rotation angles snapped to grid spacing delta (round = deterministic, stochastic = unbiased random rounding) in prep + Trotter circuits
+# exact-pipeline gap0 = 2.7599; ridge_rms_err = RMS(W - W0)/max|W0| on the one-sided W^00(q0, q1=pi/2) ridge
+# prep circuit: 370 rotations (208 non-Clifford)
+delta,pi_over_delta,mode,seed,gap,ridge_rms_err
+0.024544,128,round,0,2.7657,0.0674
+0.024544,128,stochastic,1,2.7678,0.0112
+0.024544,128,stochastic,2,2.7691,0.0105
+0.049087,64,round,0,2.7855,0.0856
+0.049087,64,stochastic,1,2.7891,0.0458
+0.049087,64,stochastic,2,2.8046,0.0500
+0.098175,32,round,0,2.8102,0.4267
+0.098175,32,stochastic,1,2.8663,0.1761
+0.098175,32,stochastic,2,2.8798,0.0908
+0.196350,16,round,0,3.3291,0.3137
+0.196350,16,stochastic,1,3.2210,0.1583
+0.196350,16,stochastic,2,3.2400,0.1264
+0.392699,8,round,0,3.8407,0.3597
+0.392699,8,stochastic,1,4.8688,0.3115
+0.392699,8,stochastic,2,4.4339,0.2321
+0.785398,4,round,0,5.2011,0.2984
+0.785398,4,stochastic,1,6.2344,0.2354
+0.785398,4,stochastic,2,7.2688,0.1970
+1.570796,2,round,0,8.0561,0.5637
+1.570796,2,stochastic,1,8.3561,0.3529
+1.570796,2,stochastic,2,8.8811,0.5637
