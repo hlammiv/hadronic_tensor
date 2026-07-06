@@ -46,6 +46,13 @@ H50 = ham.build_hamiltonian(lat, M0, G2, ETA)
 anc_site = min(split_current(insert)[1][0][0])
 
 import os
+import sys
+
+# optional worker split: argv[1] in {0,1} takes alternating ladder points
+# (skip-existing logic keeps workers from redoing finished points)
+if len(sys.argv) > 1:
+    half = int(sys.argv[1])
+    LADDER = [pt for i, pt in enumerate(LADDER) if i % 2 == half]
 
 for delta, mode, seed in LADDER:
     tag = "exact" if delta is None else f"{mode[:4]}_pi{int(round(np.pi/delta))}"
