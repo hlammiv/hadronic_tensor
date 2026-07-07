@@ -177,7 +177,15 @@ def hadamard_correlator_aer(lat: Z2Lattice, prep: QuantumCircuit,
     # stationary_1pt: for (near-)eigenstate preps <J(t)> is t-independent --
     # measure at t=0 and broadcast (halves the circuit count)
     probe_expect = np.empty((len(times), len(probe_ops)), dtype=complex)
-    insert_expect = None
+    # <A(0)> must be measured at t = 0 REGARDLESS of the requested times:
+    # it multiplies the probe-identity term id_b <A(0)> of <B(t) A(0)>.
+    # (A per-call capture at times[0] silently became <A(t)> when callers
+    # loop single-time lists -- the id_b-weighted secular bug fixed on
+    # 2026-07-07; all earlier grids are repaired post hoc from one_pt.)
+    qc0 = QuantumCircuit(n_sys + 1 if use_init else n_sys)
+    if not use_init:
+        qc0.compose(prep, inplace=True)
+    insert_expect = complex(run(qc0, {"ins": insert_op}, perm_sys)["ins"])
     t_list = times[:1] if stationary_1pt else times
     for i, t in enumerate(t_list):
         qc = QuantumCircuit(n_sys + 1 if use_init else n_sys)
@@ -187,12 +195,8 @@ def hadamard_correlator_aer(lat: Z2Lattice, prep: QuantumCircuit,
         qc.compose(trotter.trotter_circuit(lat, m0, g2, eta, t, n),
                    qubits=range(n_sys), inplace=True)
         obs = {f"p{j}": op for j, op in enumerate(probe_ops)}
-        if i == 0:
-            obs["ins"] = insert_op
         data = run(qc, obs, perm_sys)
         probe_expect[i] = [data[f"p{j}"] for j in range(len(probe_ops))]
-        if i == 0:
-            insert_expect = complex(data["ins"])
     if stationary_1pt:
         probe_expect[1:] = probe_expect[0]
     probe_p_expect = probe_expect - id_b[None, :]
