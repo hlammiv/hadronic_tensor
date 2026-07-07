@@ -34,15 +34,18 @@ def gauge_fixed_system(lat: Z2Lattice, m0, g2, eta, n_band: int = 40,
     eigensolve is the bottleneck."""
     basis = PhysicalBasis(lat)
     sel = np.flatnonzero(basis.q == 0)
-    H = basis.matrix(ham.build_hamiltonian(lat, m0, g2, eta))[sel][:, sel].real
-    T = basis.translation()[sel][:, sel]
+    # build H directly on the Q=0 subspace (full-basis COO would exhaust
+    # memory at large ns)
+    H = basis.matrix(ham.build_hamiltonian(lat, m0, g2, eta), sub=sel).real
     k = min(n_band if full_band else 4, H.shape[0] - 2)
     w, v = spla.eigsh(H, k=k, which="SA", ncv=ncv)
     o = np.argsort(w)
     w, v = w[o], v[:, o]
-    if not full_band:
-        return dict(basis=basis, sel=sel, H=H, T=T, vac=v[:, 0], evals=w,
+    if not full_band:                          # skip the T2 build entirely
+        return dict(basis=basis, sel=sel, H=H, T=None, vac=v[:, 0], evals=w,
                     evecs=v, band={}, band_states=[], M=float(w[1] - w[0]))
+    T = basis.matrix_translation(sel) if hasattr(basis, "matrix_translation") \
+        else basis.translation()[sel][:, sel]
     vac = v[:, 0]
     M = float(w[1] - w[0])                    # lightest meson (band-1 minimum)
     # single-meson band: states below the 2M two-meson threshold, with T2
@@ -77,8 +80,7 @@ def meson_operator(lat: Z2Lattice, basis: PhysicalBasis, sel, eta,
     for x in range(lat.nx):
         bond = 2 * x
         O = (hop_term(lat, bond, eta) + 1j * chi * bond_current(lat, bond, eta))
-        Om = basis.matrix(O)[sel][:, sel]
-        ops.append(Om)
+        ops.append(basis.matrix(O, sub=sel))
     return ops
 
 

@@ -79,20 +79,34 @@ class PhysicalBasis:
     def _zbit(self, n):
         return (self.z >> n) & 1
 
-    def matrix(self, op) -> sp.csr_matrix:
-        """Reduced matrix of a gauge-invariant SparsePauliOp."""
+    def matrix(self, op, sub=None) -> sp.csr_matrix:
+        """Reduced matrix of a gauge-invariant SparsePauliOp.
+
+        sub: optional array of basis indices defining an invariant subspace
+        (e.g. the Q=0 sector).  When given, the matrix is built directly on
+        that subspace -- essential at large ns where the full 2^ns COO would
+        exhaust memory.  The operator must preserve the subspace."""
         lat, ns = self.lat, self.ns
         site_of = {lat.site_qubit(n): n for n in range(ns)}
         link_of = {lat.link_qubit(n): n for n in range(lat.n_links)}
         terms = _terms(op)
+        full = sub is None
+        idx = slice(None) if full else sub
+        nsub = self.dim if full else len(sub)
+        zc = self.z if full else self.z[sub]
+        xc0 = self.xbit[:, 0] if full else self.xbit[sub, 0]
+        inv = None
+        if not full:
+            inv = np.full(self.dim, -1, dtype=np.int64)
+            inv[sub] = np.arange(nsub)
         data, cols = [], []
         for ops, c in terms:
-            phase = np.full(self.dim, c, dtype=complex)
-            zmask, lflip = 0, np.zeros(self.dim, dtype=np.int64)
+            phase = np.full(nsub, c, dtype=complex)
+            zmask, lflip = 0, np.zeros(nsub, dtype=np.int64)
             for q, p in ops.items():
                 if q in site_of:
                     n = site_of[q]
-                    zn = self._zbit(n)
+                    zn = (zc >> n) & 1
                     if p == "Z":
                         phase = phase * (1 - 2 * zn)
                     elif p == "X":
@@ -102,7 +116,7 @@ class PhysicalBasis:
                         zmask |= 1 << n
                 else:
                     n = link_of[q]
-                    en = self.ebit[:, n]
+                    en = self.ebit[idx, n]
                     if p == "X":
                         phase = phase * en
                     elif p == "Z":
@@ -110,18 +124,28 @@ class PhysicalBasis:
                     else:                                   # Y
                         phase = phase * 1j * (-en)
                         lflip = lflip ^ (1 << n)
-            z2 = self.z ^ zmask
-            h2 = self.xbit[:, 0] ^ (lflip & 1)
+            z2 = zc ^ zmask
+            h2 = xc0 ^ (lflip & 1)
             col = self.lut[(z2 << 1) | h2]
-            if np.any(col < 0):
-                raise ValueError("operator leaves the physical sector")
+            if inv is None:
+                if np.any(col < 0):
+                    raise ValueError("operator leaves the physical sector")
+            else:
+                # Individual Pauli strings of a subspace-preserving operator
+                # can carry out-of-subspace matrix elements that cancel
+                # against a sibling term (e.g. the Q=+-2 pieces of XX and YY
+                # sum to zero).  Drop them: exact for Q-conserving ops.
+                col = inv[col]
             data.append(phase)
             cols.append(col)
         data = np.concatenate(data)
         cols = np.concatenate(cols)
-        rows = np.tile(np.arange(self.dim), len(terms))
+        rows = np.tile(np.arange(nsub), len(terms))
+        if inv is not None:
+            keep = cols >= 0
+            rows, cols, data = rows[keep], cols[keep], data[keep]
         M = sp.coo_matrix((data, (rows, cols)),
-                          shape=(self.dim, self.dim)).tocsr()
+                          shape=(nsub, nsub)).tocsr()
         return M
 
     def reflection(self, shift: int = 0, stag_phase: bool = False
