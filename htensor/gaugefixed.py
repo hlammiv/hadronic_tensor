@@ -48,26 +48,29 @@ class PhysicalBasis:
     def __init__(self, lat: Z2Lattice):
         assert lat.pbc, "gauge-fixed basis implemented for PBC"
         ns = lat.ns
+        # compact dtypes: at ns=26 the (2^ns, ns) bit arrays are 14 GB each
+        # at int64; int8 (values in {-1,0,1}) cuts that 8x.
         z = np.arange(1 << ns, dtype=np.int64)
-        zbit = (z[:, None] >> np.arange(ns)) & 1          # zbit[c, n]
-        s = ((-1) ** np.arange(ns))[None, :] * (1 - 2 * zbit)
-        keep = s.prod(axis=1) == 1                         # ring closure
+        zbit = ((z[:, None] >> np.arange(ns)) & 1).astype(np.int8)
+        stag = ((-1) ** np.arange(ns)).astype(np.int8)[None, :]
+        s = (stag * (1 - 2 * zbit)).astype(np.int8)
+        keep = s.prod(axis=1, dtype=np.int8) == 1          # ring closure
         z = z[keep]
         zbit = zbit[keep]
         s = s[keep]
-        stag = ((-1) ** np.arange(ns))[None, :]
-        q = ((stag - (1 - 2 * zbit)) // 2).sum(axis=1)
+        q = ((stag - (1 - 2 * zbit)) // 2).sum(axis=1, dtype=np.int16)
         # link bits for both holonomies: e_n = e_0 * prod_{m<=n, m>=1} s_m
         cum = np.cumprod(np.concatenate(
-            [np.ones((len(z), 1), dtype=np.int64), s[:, 1:]], axis=1), axis=1)
+            [np.ones((len(z), 1), dtype=np.int8), s[:, 1:]], axis=1),
+            axis=1, dtype=np.int8)
         self.lat, self.ns = lat, ns
         self.z = np.concatenate([z, z])                    # index = (z, e0)
         self.q = np.concatenate([q, q])
-        self.h = np.concatenate([np.zeros(len(z), np.int64),
-                                 np.ones(len(z), np.int64)])
-        e0 = 1 - 2 * self.h[:, None]
-        self.ebit = np.concatenate([cum, cum]) * e0        # e_n = +-1
-        self.xbit = ((1 - self.ebit) // 2).astype(np.int64)
+        self.h = np.concatenate([np.zeros(len(z), np.int8),
+                                 np.ones(len(z), np.int8)])
+        e0 = (1 - 2 * self.h[:, None]).astype(np.int8)
+        self.ebit = (np.concatenate([cum, cum]) * e0).astype(np.int8)  # +-1
+        self.xbit = ((1 - self.ebit) // 2).astype(np.int8)
         self.dim = len(self.z)
         # lookup (z, holonomy) -> row
         self.lut = -np.ones(1 << (ns + 1), dtype=np.int64)
