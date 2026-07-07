@@ -1,0 +1,54 @@
+"""Hardware-certificate figure from the tier-1 IBM Heron runs (task: real-
+hardware plot).  Gauss-law witness map across the 50 sites for both devices,
+plus the global certificates (<H>, parity, charge) against ideal.
+
+  PYTHONPATH=. .venv/bin/python scripts/hw_figure.py
+"""
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+
+DEV = [("data/hw/job_tier1_d9610mqf47jc73a51pr0.npz", "ibm\\_marrakesh", "C0"),
+       ("data/hw/job_tier1_d96f12l2su3c739gsg0g.npz", "ibm\\_fez", "C1")]
+H_TRUTH = -49.354            # MPS-exact packet energy
+
+fig, (a1, a2) = plt.subplots(1, 2, figsize=(7.0, 3.0),
+                             gridspec_kw={"width_ratios": [2.3, 1]},
+                             constrained_layout=True)
+for path, name, col in DEV:
+    d = np.load(path)
+    g = np.array([float(d[f"G{n}"]) for n in range(50)])
+    a1.plot(range(50), g, "o-", color=col, ms=3, lw=0.8,
+            label=f"{name} (mean {g.mean():.2f})")
+a1.axhline(1.0, color="0.4", lw=0.8, ls="--")
+a1.axhline(0.0, color="0.7", lw=0.6)
+a1.set_xlabel("site $n$")
+a1.set_ylabel(r"Gauss witness $\langle G_n\rangle$")
+a1.set_ylim(-0.3, 1.1)
+a1.legend(fontsize=7.5, loc="upper right")
+a1.set_title("(a) gauge-law stabilizers, 101 qubits", fontsize=9)
+
+# global certificates, normalized to ideal
+labels = [r"$\langle G\rangle$", r"$\langle H\rangle$", r"$|P_f|$"]
+x = np.arange(len(labels))
+w = 0.35
+for i, (path, name, col) in enumerate(DEV):
+    d = np.load(path)
+    g = np.mean([float(d[f"G{n}"]) for n in range(50)])
+    vals = [g, float(d["H"]) / H_TRUTH, abs(float(d["Pf"]))]
+    a2.bar(x + (i - 0.5) * w, vals, w, color=col, label=name)
+a2.axhline(1.0, color="0.4", lw=0.8, ls="--")
+a2.set_xticks(x)
+a2.set_xticklabels(labels, fontsize=8)
+a2.set_ylabel("measured / ideal")
+a2.set_ylim(0, 1.1)
+a2.set_title("(b) global certificates", fontsize=9)
+fig.savefig("data/hw_certificates.pdf", dpi=200)
+print("wrote data/hw_certificates.pdf")
+for path, name, col in DEV:
+    d = np.load(path)
+    g = np.array([float(d[f"G{n}"]) for n in range(50)])
+    print(f"{name}: Gauss mean {g.mean():.3f}, <H>/truth "
+          f"{float(d['H'])/H_TRUTH:.2f}, Q {float(d['Q']):.2f}")
