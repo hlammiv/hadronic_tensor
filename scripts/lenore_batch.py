@@ -52,10 +52,12 @@ if mode.startswith("chiscan") or mode == "warddt":
     if mode == "warddt":
         probes = [cur.charge_density(lat, v) for v in range(NS)] + \
                  [cur.bond_current(lat, b, ETA) for b in range(NS)]
-        # dt025 showed the boosted Ward residual is NOT Trotter (22% at
-        # dt=0.5 -> 25% at dt=0.25); tr10 config isolates MPS truncation
-        configs = [(None, 1e-8, 0.25, "dt025"),
-                   (None, 1e-10, 0.25, "dt025_tr10")]
+        # dt025/tr10 gave IDENTICAL residuals -> neither Trotter nor
+        # truncation: the Simpson integral is limited by the OUTPUT
+        # sampling grid (0.5-spaced), which those configs kept fixed.
+        # samp025 halves the output grid: residual should drop ~16x.
+        TIMES = np.arange(0.0, 6.01, 0.25)
+        configs = [(None, 1e-8, 0.25, "samp025")]
     else:
         probes = [cur.charge_density(lat, v) for v in range(NS)]
         configs = ([(None, 1e-6, 0.5, "tr1e6"), (256, 1e-8, 0.5, "cap256"),
