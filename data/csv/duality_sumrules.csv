@@ -1,0 +1,6 @@
+# m0=0.7,g2=1.1,eta=1.3 (ns=12 ED); density-response moments; mu1 = parton f-sum rule
+# source: data/duality_sumrules.npz (scripts/duality.py); mu1 matches the current-algebra commutator to 1e-14 at all q
+q,mu0_S,mu1_fsum,n_90pct_mu0,n_90pct_mu1,one_meson_frac_mu0
+1.0472,0.2511,0.7595,12,12,0.5398
+2.0944,0.7441,2.2784,10,10,0.5229
+3.1416,0.9863,3.0379,8,8,0.9988
