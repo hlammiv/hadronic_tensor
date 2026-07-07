@@ -86,10 +86,16 @@ def meson_operator(lat: Z2Lattice, basis: PhysicalBasis, sel, eta,
 
 def packet_operator(meson_ops, kbar, sigma, mu, nx):
     """M[phi] = sum_x phi(x) O_x with phi(x) = sum_k Psi(k) e^{ikx},
-    Psi(k) = exp(-i k mu) exp(-(k-kbar)^2/4 sigma^2), k = 2 pi j / nx."""
+    Psi(k) = exp(-i k x_mu) exp(-(k-kbar)^2/4 sigma^2), k = 2 pi j / nx.
+
+    mu is the DHK center in STAGGERED-site units; the meson operators live
+    on physical sites, so the physical center is x_mu = mu/2 (mod nx).  (The
+    earlier physical=staggered identification wrapped mu=19 -> site 6 on the
+    13-site ring, collapsing the two packets onto each other.)"""
+    x_mu = (mu / 2.0) % nx
     ks = 2 * np.pi * np.arange(nx) / nx
     ks = np.where(ks > np.pi, ks - 2 * np.pi, ks)
-    Psi = np.exp(-1j * ks * mu) * np.exp(-((ks - kbar) ** 2) / (4 * sigma ** 2))
+    Psi = np.exp(-1j * ks * x_mu) * np.exp(-((ks - kbar) ** 2) / (4 * sigma ** 2))
     xs = np.arange(nx)
     phi = (np.exp(1j * np.outer(xs, ks)) @ Psi)
     M = meson_ops[0] * phi[0]
