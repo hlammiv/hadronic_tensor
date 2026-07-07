@@ -77,9 +77,12 @@ elif sys.argv[1] == "run":
     ncv = int(sys.argv[3]) if len(sys.argv) > 3 else 24
     lat, gf, psi, s = build(NP, full_band=False, ncv=ncv)
     E1 = np.real(np.vdot(psi, gf["H"] @ psi)) - gf["evals"][0]
+    var = float(np.real(np.vdot(psi, gf["H"] @ (gf["H"] @ psi)))
+                - np.vdot(psi, gf["H"] @ psi) ** 2)
     log(f"two-meson <H> - E_vac = {E1:.4f} (2M = {2*gf['M']:.4f}); "
+        f"energy spread sqrt(var) = {np.sqrt(var):.4f}; "
         f"physical dim {gf['H'].shape[0]}")
-    times = np.arange(0.0, 20.01, 0.5)
+    times = np.arange(0.0, 20.01, 1.0)      # DHK Fig. 10 integer grid
     R, amp = sc.return_probability(gf, psi, times)
     np.savez(f"data/dhk_Rt_NP{NP}.npz", times=times, R=R, amp=amp,
              M=gf["M"], E2=E1, m0=M0, g2=G2, eta=ETA)
