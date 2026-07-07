@@ -99,7 +99,29 @@ class PhysicalBasis:
         if not full:
             inv = np.full(self.dim, -1, dtype=np.int64)
             inv[sub] = np.arange(nsub)
-        data, cols = [], []
+        # Accumulate COO triplets, flushing to a running CSR whenever the
+        # buffer grows large.  Each term emits up to nsub entries; over ~100
+        # terms that would be billions at large ns, so a running sum keeps
+        # peak memory ~ nnz(final) + one batch rather than terms*nsub.
+        M = sp.csr_matrix((nsub, nsub), dtype=complex)
+        data, cols, rows_acc = [], [], []
+        buffered = [0]
+        arange_nsub = np.arange(nsub)
+
+        def flush():
+            if not data:
+                return M
+            d = np.concatenate(data)
+            cc = np.concatenate(cols)
+            rr = np.concatenate(rows_acc)
+            if inv is not None:
+                keep = cc >= 0
+                d, cc, rr = d[keep], cc[keep], rr[keep]
+            m2 = sp.coo_matrix((d, (rr, cc)), shape=(nsub, nsub)).tocsr()
+            data.clear(); cols.clear(); rows_acc.clear()
+            buffered[0] = 0
+            return M + m2
+
         for ops, c in terms:
             phase = np.full(nsub, c, dtype=complex)
             zmask, lflip = 0, np.zeros(nsub, dtype=np.int64)
@@ -138,14 +160,13 @@ class PhysicalBasis:
                 col = inv[col]
             data.append(phase)
             cols.append(col)
-        data = np.concatenate(data)
-        cols = np.concatenate(cols)
-        rows = np.tile(np.arange(nsub), len(terms))
-        if inv is not None:
-            keep = cols >= 0
-            rows, cols, data = rows[keep], cols[keep], data[keep]
-        M = sp.coo_matrix((data, (rows, cols)),
-                          shape=(nsub, nsub)).tocsr()
+            rows_acc.append(arange_nsub)
+            buffered[0] += nsub
+            if full and buffered[0] < (1 << 62):
+                continue
+            if buffered[0] > 40_000_000:        # ~1 GB of complex COO
+                M = flush()
+        M = flush()
         return M
 
     def reflection(self, shift: int = 0, stag_phase: bool = False
