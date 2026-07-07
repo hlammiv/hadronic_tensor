@@ -52,7 +52,10 @@ if mode.startswith("chiscan") or mode == "warddt":
     if mode == "warddt":
         probes = [cur.charge_density(lat, v) for v in range(NS)] + \
                  [cur.bond_current(lat, b, ETA) for b in range(NS)]
-        configs = [(None, 1e-8, 0.25, "dt025")]
+        # dt025 showed the boosted Ward residual is NOT Trotter (22% at
+        # dt=0.5 -> 25% at dt=0.25); tr10 config isolates MPS truncation
+        configs = [(None, 1e-8, 0.25, "dt025"),
+                   (None, 1e-10, 0.25, "dt025_tr10")]
     else:
         probes = [cur.charge_density(lat, v) for v in range(NS)]
         configs = ([(None, 1e-6, 0.5, "tr1e6"), (256, 1e-8, 0.5, "cap256"),
@@ -62,6 +65,9 @@ if mode.startswith("chiscan") or mode == "warddt":
                     (64, 1e-8, 0.5, "cap64")])
 
     for cap, trunc, dt, tag in configs:
+        if os.path.exists(f"data/sysscan_{mode}_{tag}.npz"):
+            log(f"{mode}/{tag}: exists, skipping")
+            continue
         rows = []
         for t in TIMES:
             d = backends.hadamard_correlator_aer(
