@@ -58,6 +58,12 @@ def to_clifford_circuit(circ: QuantumCircuit, atol: float = 1e-9) -> QuantumCirc
             out.h(q[0])
             _rz_clifford(out, inst.operation.params[0], q[0], atol)
             out.h(q[0])
+        elif name == "ry":                    # V = S.H maps Z -> Y
+            out.sdg(q[0])
+            out.h(q[0])
+            _rz_clifford(out, inst.operation.params[0], q[0], atol)
+            out.h(q[0])
+            out.s(q[0])
         elif name == "rzz":
             _rzz(out, inst.operation.params[0], q[0], q[1], atol)
         elif name == "rxx":
