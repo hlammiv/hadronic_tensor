@@ -37,8 +37,15 @@ for ns in (8, 10, 12, 14, 16, 18, 20):
     d = np.load(f"data/deep_levels_ns{ns}.npz")
     gaps, phases = d["gaps"], d["phases"]
     L = ns // 2
-    p0 = [g for g, ph in zip(gaps, phases)
-          if abs(np.angle(np.exp(1j * ph))) < 1e-4]
+    refl = d["refl"] * d["refl"][0] if "refl" in d else np.ones_like(gaps)
+    # (vacuum-normalized: stored labels carry a volume-alternating Fock
+    # reordering sign; refl[0] is the vacuum)
+    # reflection parity R = +1 required: identical-boson MM levels are
+    # parity-even (the k=0 meson is R = -1, squared).  R = -1 levels in the
+    # elastic window are odd-channel MM' states, not MM (two such
+    # misassignments caught at ns=12 and ns=20).
+    p0 = [g for g, ph, r in zip(gaps, phases, refl)
+          if abs(np.angle(np.exp(1j * ph))) < 1e-4 and r > 0.99]
     # interacting MM candidates in the single-channel window
     cands = sorted(g for g in p0 if 2 * M - 0.06 < g < E_INEL)
     multi = sorted(g for g in p0 if E_INEL <= g < 2 * E(np.pi) + 0.2)

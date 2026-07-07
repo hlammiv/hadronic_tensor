@@ -58,7 +58,8 @@ E_MM_LO = 5.85
 ev_lv, odd_lv, mm_lv = {}, {}, {}
 for ns in VOLS:
     d = np.load(f"data/deep_levels_ns{ns}.npz")
-    g, ph, rf = d["gaps"], d["phases"], d["refl"]
+    g, ph = d["gaps"], d["phases"]
+    rf = d["refl"] * d["refl"][0]      # vacuum-normalized parity
     p0 = np.abs(np.angle(np.exp(1j * ph))) < 1e-4
     win = p0 & (g > THR + 2e-3) & (g < EDGE - 2e-3)
     amb = win & (np.abs(rf) < 0.99)
@@ -66,8 +67,15 @@ for ns in VOLS:
     ev_lv[ns] = np.sort(g[win & (rf > 0.99)])
     odd_lv[ns] = np.sort(g[win & (rf < -0.99)])
     mm = p0 & (g > E_MM_LO) & (g < THR - 2e-3)
-    assert (d["refl"][mm] > 0.99).all(), f"odd MM anchor?! ns={ns}"
-    mm_lv[ns] = np.sort(g[mm])
+    sub_odd = mm & (rf < -0.99)
+    if sub_odd.any():
+        # parity-odd below the MM' threshold: identical-boson MM cannot be
+        # odd, so these are near-threshold odd-channel states (resonance /
+        # virtual-state candidates); they need analytic continuation, not
+        # the real-momentum quantization condition -- quarantine.
+        print(f"  ns={ns}: sub-threshold ODD level(s) "
+              f"{np.round(g[sub_odd], 4)} quarantined (odd-channel pole?)")
+    mm_lv[ns] = np.sort(g[mm & (rf > 0.99)])
     print(f"ns={ns} (L={ns//2}): {len(mm_lv[ns])} MM-anchor + "
           f"{len(ev_lv[ns])} even + {len(odd_lv[ns])} odd: "
           f"{np.round(mm_lv[ns], 4)} | {np.round(ev_lv[ns], 4)} | "

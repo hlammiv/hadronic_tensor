@@ -247,5 +247,11 @@ def deep_spectrum(lat: Z2Lattice, m0, g2, eta, k: int | None = None,
                 for m, val in zip(p0, pe):
                     parities[i + m] = val
         i = j
+    if R is not None and np.isfinite(parities[0]):
+        # normalize to the vacuum: the raw Fock reordering sign on the
+        # filled staggered sea is (-1)^(k'(k'-1)/2), k' = ns/2, which
+        # alternates with volume (period 4 in L); physical parity is
+        # relative to the vacuum
+        parities = parities * parities[0]
     out = (w - w[0], phases, w)
     return out + ((parities,) if refl else ())
