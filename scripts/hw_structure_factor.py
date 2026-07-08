@@ -110,6 +110,51 @@ def Sq_from_mps(lat, mps, perm, qops, ro=1.0):
 
 
 mode = sys.argv[1]
+if mode == "plot":
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    k0tag = sys.argv[2] if len(sys.argv) > 2 else "k1.26"
+    di = np.load(f"data/hwsf_ideal_ns50_{k0tag}.npz")
+    dn = np.load(f"data/hwsf_noisy_ns50_{k0tag}.npz")
+    q, Si, Sn = di["q"], di["S"], dn["S"]
+    ntraj = int(dn["ntraj"])
+    # 2-parameter noise model S_noisy = f*S_ideal + c  (damping + floor)
+    Amat = np.vstack([Si, np.ones_like(Si)]).T
+    (f, c), *_ = np.linalg.lstsq(Amat, Sn, rcond=None)
+    Smit = (Sn - c) / f
+    err = np.abs(Sn) / np.sqrt(ntraj) / f + 0.02 * np.abs(Si)
+    rec = Si > c                                 # signal above the floor
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=(7.0, 3.0),
+                                 constrained_layout=True)
+    a1.plot(q, Si, "k-", lw=1.4, label="exact (MPS)")
+    a1.plot(q, Sn, "x", color="0.65", ms=6, label="noisy sim, raw")
+    a1.errorbar(q[rec], Smit[rec], yerr=err[rec], fmt="rs", ms=6, capsize=2,
+                label="noisy sim, mitigated")
+    a1.errorbar(q[~rec], Smit[~rec], yerr=err[~rec], fmt="s", ms=6,
+                mfc="none", mec="r", capsize=2)
+    a1.axhline(c, color="C0", ls=":", lw=0.8)
+    a1.text(q[0], c + 0.02, "noise floor", fontsize=6.5, color="C0")
+    a1.set_xlabel("$q^1$"); a1.set_ylabel(r"$S(q^1)$")
+    a1.set_title("(a) structure factor, 101 qubits", fontsize=9)
+    a1.legend(fontsize=7)
+    res = (Smit - Si) / Si
+    a2.axhspan(-0.05, 0.05, color="0.9")
+    a2.plot(q[rec], res[rec], "rs", ms=6)
+    a2.plot(q[~rec], res[~rec], "s", ms=6, mfc="none", mec="r")
+    a2.axhline(0, color="0.5", lw=0.6)
+    a2.set_xlabel("$q^1$"); a2.set_ylabel(r"$(S_{\rm mit}-S_{\rm exact})/S_{\rm exact}$")
+    a2.set_title("(b) recovery vs momentum", fontsize=9)
+    a2.set_ylim(-0.6, 0.6)
+    fig.savefig("data/hwsf_figure.pdf", dpi=200)
+    ng = int(np.sum(rec & (np.abs(res) < 0.15)))
+    print(f"noise model: damping f={f:.3f}, floor c={c:.3f} "
+          f"({ntraj} trajectories)")
+    print(f"recovered: {ng}/{len(q)} points to <15%, "
+          f"{int(np.sum(np.abs(res)<0.01))} to <1%")
+    print("wrote data/hwsf_figure.pdf")
+    sys.exit()
+
 ns = int(sys.argv[2])
 k0tag = sys.argv[-1] if sys.argv[-1].startswith("k") else "k1.26"
 lat, prep, anc = build(ns, k0tag)
