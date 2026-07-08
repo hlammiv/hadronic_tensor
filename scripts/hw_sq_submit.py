@@ -65,33 +65,36 @@ def measured_circuit(lat, prep):
     return qc
 
 
-def estimator(bitstrings, lat, QS, ro=True):
-    """counts -> S(q) and Gauss witnesses.  bitstrings: (Nshot, nq) uint8,
-    bit=1 means |1> (Z=-1).  Qubit index i in the string is qubit i."""
-    if ro:                        # apply asymmetric readout error to samples
-        rng = np.random.default_rng(7)
-        b = bitstrings.copy()
-        flip0 = (b == 0) & (rng.random(b.shape) < RO01)
-        flip1 = (b == 1) & (rng.random(b.shape) < RO10)
-        b = b ^ (flip0 | flip1)
-    else:
-        b = bitstrings
+def accumulate(bitstrings, lat, QS, ro_seed=7):
+    """bitstrings (Nshot,nq) -> additive accumulators so partial runs on
+    different machines combine exactly: sum_rho(q), sum |rho(q)|^2, Gauss
+    sums, shot count.  S(q) is a shot-variance, so only these sums (not the
+    per-worker S) may be pooled."""
+    rng = np.random.default_rng(ro_seed)
+    b = bitstrings.copy()
+    b = b ^ (((b == 0) & (rng.random(b.shape) < RO01)) |
+             ((b == 1) & (rng.random(b.shape) < RO10)))
     sites = np.array([lat.site_qubit(v) for v in range(lat.ns)])
-    zv = 1 - 2 * b[:, sites]                      # (Nshot, ns) in +-1
+    zv = 1 - 2 * b[:, sites]
     xv = 2 * np.pi * (np.arange(lat.ns) // 2) / lat.nx
-    S = []
-    for q in QS:
-        rho = zv @ np.exp(1j * q * xv)            # (Nshot,) complex
-        S.append((np.mean(np.abs(rho) ** 2) - np.abs(np.mean(rho)) ** 2)
-                 / lat.nx)
-    # Gauss witness G_n = (-1)^n Z_n X_{n-1} X_n (links already in X basis)
-    G = []
+    rho = zv @ np.exp(1j * np.outer(QS, xv)).T    # (Nshot, nq)
+    gval = np.ones((len(b), lat.ns))
     for n in range(lat.ns):
-        val = (-1) ** n * (1 - 2 * b[:, lat.site_qubit(n)])
-        val = val * (1 - 2 * b[:, lat.link_qubit(n - 1)])
-        val = val * (1 - 2 * b[:, lat.link_qubit(n)])
-        G.append(np.mean(val))
-    return np.array(S).real, np.array(G)
+        gval[:, n] = ((-1) ** n * (1 - 2 * b[:, lat.site_qubit(n)])
+                      * (1 - 2 * b[:, lat.link_qubit(n - 1)])
+                      * (1 - 2 * b[:, lat.link_qubit(n)]))
+    return dict(sum_rho=rho.sum(0), sum_rho2=(np.abs(rho) ** 2).sum(0),
+                gsum=gval.sum(0), n=len(b))
+
+
+def finalize(accs, lat, QS):
+    """combine accumulators -> S(q), Gauss."""
+    n = sum(a["n"] for a in accs)
+    sr = sum(a["sum_rho"] for a in accs)
+    sr2 = sum(a["sum_rho2"] for a in accs)
+    gs = sum(a["gsum"] for a in accs)
+    S = (sr2 / n - np.abs(sr / n) ** 2).real / lat.nx
+    return S, gs / n, n
 
 
 def noise_transform(circ, rng):
@@ -133,46 +136,63 @@ if mode == "audit":
             f"(single circuit, all {len(QS)} momenta)")
 
 elif mode == "simval":
+    # simval <ntraj> <shots> [worker_id n_workers]
     from qiskit_aer import AerSimulator
     ntraj, shots = int(sys.argv[2]), int(sys.argv[3])
+    wid = int(sys.argv[4]) if len(sys.argv) > 5 else 0
+    nw = int(sys.argv[5]) if len(sys.argv) > 5 else 1
     per = shots // ntraj
     anc = min(split_current(cur.charge_density(lat, CENTER))[1][0][0])
-    allbits = []
+    accs = []
     ss = np.random.SeedSequence(2024)
+    seeds = ss.spawn(ntraj * nw)              # global list; worker takes its slice
+    mine = seeds[wid * ntraj:(wid + 1) * ntraj]
     for t in range(ntraj):
-        rng = np.random.default_rng(ss.spawn(1)[0])
+        rng = np.random.default_rng(mine[t])
         mps, perm = backends.prepare_state_mps(
             lat, prep, anc, cap=256, trunc=1e-8,
             circuit_transform=lambda c: noise_transform(c, rng))
         n = lat.n_qubits + 1
         qc = QuantumCircuit(n, lat.n_qubits)
         qc.set_matrix_product_state(mps)
-        for nn in range(lat.n_links):        # links to X basis (permuted)
+        for nn in range(lat.n_links):
             qc.h(perm[lat.link_qubit(nn)])
         for v in range(lat.n_qubits):
             qc.measure(perm[v], v)
         sim = AerSimulator(method="matrix_product_state",
                            matrix_product_state_truncation_threshold=1e-8)
         cnt = sim.run(qc, shots=per).result().get_counts()
-        for bs, c in cnt.items():
-            bits = np.frombuffer(bs[::-1].encode(), np.uint8) - ord("0")
-            allbits.append(np.tile(bits, (c, 1)))
-        if (t + 1) % 8 == 0:
-            log(f"traj {t+1}/{ntraj}, {sum(len(a) for a in allbits)} shots")
-    B = np.vstack(allbits)
-    S, G = estimator(B, lat, QS)
+        bits = np.vstack([np.tile(np.frombuffer(bs[::-1].encode(), np.uint8)
+                                  - ord("0"), (c, 1))
+                          for bs, c in cnt.items()])
+        accs.append(accumulate(bits, lat, QS, ro_seed=wid * 1000 + t))
+        if (t + 1) % 4 == 0:
+            log(f"worker {wid}: traj {t+1}/{ntraj}")
+    tot = {k: sum(a[k] for a in accs) for k in accs[0]}
+    np.savez(f"data/hwsq_acc_w{wid}_{K0TAG}.npz", **tot)
+    log(f"worker {wid} saved accumulators ({tot['n']} shots)")
+    if nw == 1:
+        import subprocess
+        subprocess.run([sys.executable, __file__, "combine"],
+                       env={"PYTHONPATH": ".", "PATH": "/usr/bin:/bin"})
+
+elif mode == "combine":
+    import glob
+    files = sorted(glob.glob(f"data/hwsq_acc_w*_{K0TAG}.npz"))
+    accs = [dict(np.load(f)) for f in files]
+    S, G, nshot = finalize(accs, lat, QS)
     Si = np.load(f"data/hwsf_ideal_ns{NS}_{K0TAG}.npz")["S"]
     A = np.vstack([Si, np.ones_like(Si)]).T
     (f, c), *_ = np.linalg.lstsq(A, S, rcond=None)
     Smit = (S - c) / f
     res = (Smit - Si) / Si
     rec = Si > c
-    log(f"sampled {len(B)} shots; Gauss mean {G.mean():.3f}")
+    log(f"combined {len(files)} workers, {nshot} shots; Gauss mean {G.mean():.3f}")
     log(f"noise fit f={f:.3f} c={c:.3f}; "
         f"recovered {int(np.sum(rec & (np.abs(res) < 0.15)))}/{len(QS)} "
         f"<15%, {int(np.sum(np.abs(res) < 0.01))} <1%")
     np.savez(f"data/hwsq_simval_{K0TAG}.npz", q=QS, S_raw=S, S_mit=Smit,
-             S_ideal=Si, G=G, f=f, c=c, nshot=len(B))
+             S_ideal=Si, G=G, f=f, c=c, nshot=nshot)
     for i, q in enumerate(QS):
         log(f"  q={q:.2f}: exact {Si[i]:.3f} raw {S[i]:.3f} "
             f"mit {Smit[i]:.3f} ({res[i]:+.1%})")
