@@ -177,6 +177,68 @@ elif mode == "simval":
         subprocess.run([sys.executable, __file__, "combine"],
                        env={"PYTHONPATH": ".", "PATH": "/usr/bin:/bin"})
 
+elif mode == "submit":
+    # submit <backend> <shots>
+    from qiskit_ibm_runtime import SamplerV2, QiskitRuntimeService
+    from qiskit.transpiler.preset_passmanagers import \
+        generate_preset_pass_manager
+    import json
+    import os
+    bname = sys.argv[2] if len(sys.argv) > 2 else None
+    shots = int(sys.argv[3]) if len(sys.argv) > 3 else 30000
+    service = QiskitRuntimeService()
+    be = (service.backend(bname) if bname
+          else service.least_busy(min_num_qubits=101, operational=True))
+    log(f"backend {be.name}; {shots} shots (~{shots*265e-6:.1f}s QPU)")
+    qc = measured_circuit(lat, prep)
+    pm = generate_preset_pass_manager(backend=be, optimization_level=3,
+                                      seed_transpiler=7)
+    tc = pm.run(qc)
+    two_q = sum(v for k, v in tc.count_ops().items()
+                if k in ("cz", "ecr", "cx"))
+    log(f"transpiled: depth {tc.depth()}, {two_q} 2q gates")
+    sampler = SamplerV2(mode=be)
+    sampler.options.default_shots = shots
+    sampler.options.twirling.enable_measure = True
+    sampler.options.twirling.enable_gates = False
+    sampler.options.dynamical_decoupling.enable = True
+    sampler.options.dynamical_decoupling.sequence_type = "XY4"
+    job = sampler.run([tc])
+    os.makedirs("data/hw", exist_ok=True)
+    creg = tc.cregs[-1].name
+    meta = {"job_id": job.job_id(), "backend": be.name, "shots": shots,
+            "creg": creg}
+    json.dump(meta, open(f"data/hw/sq_job_{job.job_id()}.json", "w"), indent=1)
+    log(f"SUBMITTED {job.job_id()} (creg '{creg}') "
+        f"-> data/hw/sq_job_{job.job_id()}.json")
+
+elif mode == "analyze":
+    from qiskit_ibm_runtime import QiskitRuntimeService
+    import json
+    meta = json.load(open(sys.argv[2]))
+    res = QiskitRuntimeService().job(meta["job_id"]).result()
+    ba = res[0].data[meta["creg"]]
+    counts = ba.get_counts()
+    bits = np.vstack([np.tile(np.frombuffer(bs[::-1].encode(), np.uint8)
+                              - ord("0"), (c, 1))
+                      for bs, c in counts.items()]).astype(np.uint8)
+    acc = accumulate(bits, lat, QS)
+    S, G, nshot = finalize([acc], lat, QS)
+    Si = np.load(f"data/hwsf_ideal_ns{NS}_{K0TAG}.npz")["S"]
+    A = np.vstack([Si, np.ones_like(Si)]).T
+    (f, c), *_ = np.linalg.lstsq(A, S, rcond=None)
+    Smit = (S - c) / f
+    res_ = (Smit - Si) / Si
+    rec = Si > c
+    log(f"HARDWARE {meta['backend']}: {nshot} shots, Gauss mean {G.mean():.3f}")
+    log(f"noise fit f={f:.3f} c={c:.3f}; recovered "
+        f"{int(np.sum(rec & (np.abs(res_) < 0.15)))}/{len(QS)} <15%")
+    np.savez(f"data/hwsq_HARDWARE_{K0TAG}.npz", q=QS, S_raw=S, S_mit=Smit,
+             S_ideal=Si, G=G, f=f, c=c, nshot=nshot, backend=meta["backend"])
+    for i, q in enumerate(QS):
+        log(f"  q={q:.2f}: exact {Si[i]:.3f} raw {S[i]:.3f} "
+            f"mit {Smit[i]:.3f} ({res_[i]:+.1%})")
+
 elif mode == "combine":
     import glob
     files = sorted(glob.glob(f"data/hwsq_acc_w*_{K0TAG}.npz"))
