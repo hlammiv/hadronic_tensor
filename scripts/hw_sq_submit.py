@@ -77,7 +77,7 @@ def accumulate(bitstrings, lat, QS, ro_seed=7):
     b = b.astype(np.int8)                          # signed for +-1 arithmetic
     sites = np.array([lat.site_qubit(v) for v in range(lat.ns)])
     zv = 1 - 2 * b[:, sites]
-    xv = 2 * np.pi * (np.arange(lat.ns) // 2) / lat.nx
+    xv = (np.arange(lat.ns) // 2).astype(float)    # integer position; QS carries 2pi/nx
     rho = zv @ np.exp(1j * np.outer(QS, xv)).T    # (Nshot, nq)
     gval = np.ones((len(b), lat.ns))
     for n in range(lat.ns):
