@@ -15,6 +15,7 @@ coverage, circuits, plan) in minutes; ``full`` adds A6 check and A7
 rehearse+analyze per card, and is what bundle requires.
 """
 
+import os
 import time
 
 import numpy as np
@@ -155,7 +156,8 @@ def run(target: str, presets, ns: int = 50, basis: str = "cz", level: str = "fas
         shots_scale: float = 1.0, budget: float = 180.0, rep_time: float = 250e-6,
         tol: float = 5e-3, times=None, wing_surrogate: str | None = None,
         rehearse_shots: int = 4000, kappa_tol: float = 0.25,
-        refs: str = "data/qpdf_card_refs.npz", log=print) -> dict:
+        refs: str = "data/qpdf_card_refs.npz", keep_rehearsal: str | None = None,
+        log=print) -> dict:
     """-> the record dict (also the return value of the CLI)."""
     res, t0 = Result(), time.time()
     steps = STEPS_FULL if level == "full" else STEPS_FAST
@@ -318,7 +320,11 @@ def run(target: str, presets, ns: int = 50, basis: str = "cz", level: str = "fas
         import shutil
         import tempfile
         from . import sim as S
-        out_dir = tempfile.mkdtemp(prefix="htq_accept_")
+        # sampling 234 pubs costs over an hour; the analysis that consumes them
+        # is where the failures have been.  Keeping the bits turns the next
+        # iteration from a resample into a rerun of analyze alone.
+        out_dir = keep_rehearsal or tempfile.mkdtemp(prefix="htq_accept_")
+        os.makedirs(out_dir, exist_ok=True)
         try:
             rt = list(times) if times is not None else _rehearse_times(specs)
             sub = [s for s in specs if any(abs(s.t - x) < 1e-9 for x in rt)]
@@ -349,7 +355,13 @@ def run(target: str, presets, ns: int = 50, basis: str = "cz", level: str = "fas
         except Exception as e:
             res.add("rehearse", R.FAIL, f"{type(e).__name__}: {str(e)[:200]}")
         finally:
-            shutil.rmtree(out_dir, ignore_errors=True)
+            if keep_rehearsal:
+                res.extra.setdefault("rehearsal_dir", out_dir)
+                log(f"rehearsal bits kept in {out_dir} "
+                    f"(re-run the analysis alone with: python -m htq_hw analyze "
+                    f"{out_dir}/htq_bits_*.npz --by-card --card <card>)")
+            else:
+                shutil.rmtree(out_dir, ignore_errors=True)
 
     payload = {"level": level, "target": tstamp, "presets": list(presets), "ns": ns,
                "basis": basis, "seconds": round(time.time() - t0, 1),

@@ -386,7 +386,8 @@ def cmd_acceptance(args):
                  require_real=args.require_real, cache_dir=args.cache, threads=args.threads,
                  budget=args.budget, rep_time=args.rep_time, tol=args.tol, times=args.times,
                  wing_surrogate=args.wing_surrogate, rehearse_shots=args.accept_shots,
-                 kappa_tol=args.kappa_tol, refs=args.refs, log=log)
+                 kappa_tol=args.kappa_tol, refs=args.refs,
+                 keep_rehearsal=args.keep_rehearsal, log=log)
     path = R.write_record(args.record, "acceptance", rec, rec["status"])
     print()
     print(R.summarize({"kind": "acceptance", **rec, "env": R.env_stamp(), "git": R.git_stamp()}))
@@ -621,6 +622,9 @@ def main(argv=None):
     ac.add_argument("--threads", type=int, default=2)
     ac.add_argument("--accept-shots", type=int, default=4000,
                     help="shots per pub in the level=full rehearsal (statistics, not physics)")
+    ac.add_argument("--keep-rehearsal", default=None, metavar="DIR",
+                    help="keep the sampled bits here instead of a temp dir, so a failing "
+                         "analysis can be re-run without resampling (over an hour at Ns=50)")
     ac.add_argument("--refs", default=C.ref_path("qpdf_card_refs.npz"),
                     help="ideal <x> references the rehearsed qpdf cards are checked against")
     ac.add_argument("--kappa-tol", type=float, default=0.25,
