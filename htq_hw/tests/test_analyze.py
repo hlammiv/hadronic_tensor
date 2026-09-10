@@ -289,3 +289,37 @@ def test_shipped_references_are_present_and_self_describing():
             A.load_wing_surrogate(str(p), eta=eta + 1.0)
     z = np.load(C.REF_DIR / "qpdf_card_refs.npz", allow_pickle=True)
     assert {f"{t}_s{w}_x" for t in ("prod", "relA") for w in ("0.75", "1.00", "1.50")} <= set(z.files)
+
+
+# ---- components a card can actually produce --------------------------------
+
+@pytest.mark.parametrize("fams,want", [
+    ({"j0"}, ["00", "10"]),                       # a vacuum card: no J1 insertion, ever
+    ({"j0", "j1p1", "j1p2"}, ["00", "10", "01", "11"]),
+    ({"j1p1", "j1p2"}, ["01", "11"]),
+    (set(), []),
+])
+def test_components_for(fams, want):
+    assert A.components_for(fams) == want
+
+
+def test_analyze_drops_components_the_pubs_cannot_build(tmp_path):
+    """The defect the acceptance rehearsal caught: analysing a vacuum card
+    with the default four components tried to load ideal_j1p1.npz, which a
+    j0-only card has never had and never will."""
+    from htq_hw import campaign as CP
+    lat = Lattice(6)
+    specs = [s for s in CP.manifest(times=(0.5,), families=("j0",), readouts=("Z",))]
+    names = [s.name for s in specs]
+    bits = str(tmp_path / "htq_bits_v.npz")
+    np.savez(bits, job_id="v", backend="b", pub_names=np.array(names),
+             **{n: np.zeros((8, lat.n_wires), np.uint8) for n in names})
+    tpl = str(tmp_path / "ideal_{family}.npz")          # only j0 will exist
+    from htq_hw import sim as S
+    S.write_ideal_grids(C.load_card(), 6, 2, ("j0",), [0.0, 0.5], tpl, threads=2)
+    out = A.analyze([bits], tpl, str(tmp_path / "slice_{comp}_t{t:.1f}.npz"), 6, 2,
+                    components=["00", "10", "01", "11"], log=None)
+    assert {k[0] for k in out} <= {"00", "10"}          # no j1p1 grid was demanded
+    with pytest.raises(ValueError, match="can be built"):
+        A.analyze([bits], tpl, str(tmp_path / "x_{comp}_t{t:.1f}.npz"), 6, 2,
+                  components=["01", "11"], log=None)

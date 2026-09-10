@@ -567,6 +567,20 @@ def analyze(bits_paths, ideal_template: str, out_template: str, ns: int, center:
         avail = available_prefixes(bits_paths)
         raise ValueError(f"no pubs matching prefix={prefix!r} in {list(bits_paths)}; "
                          f"available prefixes: {avail or ['(none - unprefixed pubs only)']}")
+    if not components:
+        raise ValueError("no components requested")
+    # a component whose insertion family was never measured cannot be built, so
+    # filter on the pubs actually present rather than loading a grid that a
+    # vacuum or j0-only card will never have
+    have = {parse_pub_name(n)["family"] for j in jobs for n in j.bits}
+    keep = components_for(have, components)
+    if not keep:
+        raise ValueError(f"none of the requested components {list(components)} can be built from "
+                         f"the families present ({sorted(have)})")
+    if len(keep) < len(components):
+        _log(f"components {[c for c in components if c not in keep]} dropped: "
+             f"only {sorted(have)} pubs present", log)
+    components = keep
     fams = sorted({f for c in components for f in COMPONENT_LAYOUT[c][0]} | {"j0"})
     ideals = load_ideal_grids(ideal_template, fams, card=card, expect_ns=ns)
     surrogate = load_wing_surrogate(wing_surrogate, eta=eta)
@@ -679,6 +693,23 @@ def qpdf_amplitude(bits_by_setting: dict, lat: Lattice, center: int, ms=(1, 2, 3
             err = float(np.hypot(err, rv["J0_err"][center % lat.ns]))
         out[0] = (complex(val), complex(err))
     return out
+
+
+def _log(msg, log=print):
+    if log:
+        log(msg)
+
+
+def components_for(families, components=None) -> list:
+    """The components a card's pubs can actually produce.
+
+    A vacuum card only ever runs j0 pubs, so asking it for W^{01} or W^{11}
+    demands j1p1/j1p2 grids it does not have and never will.  That is a
+    property of the card, not a missing file, so it is filtered rather than
+    raised."""
+    have = set(families)
+    return [c for c in (components or COMPONENTS)
+            if set(COMPONENT_LAYOUT[c][0]) <= have]
 
 
 def qpdf_bits_by_card(bits_paths) -> dict:

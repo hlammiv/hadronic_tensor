@@ -682,16 +682,24 @@ def rehearse(be, lat: Lattice, card, emb: T.Embedding, specs, shots: dict, ideal
     # a time with that card's own prefix, grids and couplings
     slices, presets = {}, {s.card or "": s.preset for s in specs}
     for cname, cdict in cards.items():
-        if not any(s.family != "qpdf" for s in specs if (s.card or cname) == cname):
+        fams = {s.family for s in specs if (s.card or cname) == cname and s.family != "qpdf"}
+        if not fams:
             # preparation-only card: the slice analysis has nothing to reduce
             T._log(f"analyze skipped for {cname}: qpdf pubs only ('analyze --qpdf' reduces those)", log)
             continue
+        comps = A.components_for(fams, components)
+        if not comps:
+            T._log(f"analyze skipped for {cname}: {sorted(fams)} support no requested component", log)
+            continue
+        if len(comps) < len(components):
+            T._log(f"{cname}: {sorted(fams)} pubs only -> components {comps} "
+                   f"(dropped {[c for c in components if c not in comps]})", log)
         prefix = CP.name_prefix(presets.get(cname, ""), cname) if len(cards) > 1 else None
         out_t = os.path.join(out_dir, ("slice_{comp}_t{t:.1f}.npz" if len(cards) == 1
                                        else f"{cname}_slice_{{comp}}_t{{t:.1f}}.npz"))
         try:
             got = A.analyze([bits_path], ideal_template, out_t, lat.ns, emb.center,
-                            components=components, eta=cdict["couplings"]["eta"],
+                            components=comps, eta=cdict["couplings"]["eta"],
                             backend=meta["backend"], log=log, prefix=prefix, card=cname,
                             wing_surrogate=A.wing_path_for(wing_surrogate, cname))
         except ValueError as e:          # e.g. a card with only qpdf pubs
