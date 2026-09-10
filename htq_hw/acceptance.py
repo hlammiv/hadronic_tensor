@@ -334,14 +334,17 @@ def run(target: str, presets, ns: int = 50, basis: str = "cz", level: str = "fas
                              wing_surrogate=wing_surrogate)
             worst, bad, per_card = 0.0, [], {}
             for key, path in out["slices"].items():
-                cname = key[0] if len(key) == 3 else ""
+                # multi-card keys are (card, comp, t) or, for a dt variant,
+                # (card, comp, t, dt); single-card keys carry no card at all
+                cname = key[0] if (len(key) >= 3 and key[0] in cards) else ""
                 z = np.load(path, allow_pickle=True)
                 k = float(z["kappa_v"][0][emb.center])
                 ok = ~z["mask"][0]
                 d = abs(k - 1.0)
                 worst = max(worst, d)
-                per_card.setdefault(cname, []).append({"slice": key[-2:], "kappa_center": k,
-                                                       "masked": int((~ok).sum())})
+                per_card.setdefault(cname, []).append(
+                    {"slice": [str(x) for x in (key[1:] if cname else key)],
+                     "kappa_center": k, "masked": int((~ok).sum())})
                 if not np.isfinite(k) or d > kappa_tol or not ok.any():
                     bad.append(f"{key}: kappa(center)={k:.3f}, {int((~ok).sum())}/{ns} masked")
             missing = [c for c in cards if c not in per_card and _families_for(specs, c)]
