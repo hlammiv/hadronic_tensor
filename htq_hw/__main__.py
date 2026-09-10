@@ -375,7 +375,7 @@ def cmd_analyze(args):
         prefix = CP.name_prefix(args.preset, args.card)
     A.analyze(args.bits, _ideal_template(args), args.slices, args.ns, center, args.times, args.components,
               card["couplings"]["eta"], args.backend, log=log, prefix=prefix, card=args.card,
-              wing_surrogate=args.wing_surrogate)
+              select_by_card=args.by_card, wing_surrogate=args.wing_surrogate)
 
 
 def cmd_acceptance(args):
@@ -583,6 +583,9 @@ def main(argv=None):
     an.add_argument("--prefix", default=None,
                     help="'preset.card:' pub-name prefix selecting one card of a composed campaign")
     an.add_argument("--preset", default=None, help="with --card, derives --prefix")
+    an.add_argument("--by-card", action="store_true",
+                    help="select every pub of --card whatever preset it came from "
+                         "(a card can be in several presets)")
     an.add_argument("--list-prefixes", action="store_true",
                     help="list the prefixes present in the bits files and exit")
     an.add_argument("--wing-surrogate", default=C.ref_path("wing_surrogate_{tag}.npz"), metavar="NPZ",

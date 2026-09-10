@@ -536,18 +536,31 @@ def slice_path(out_template: str, comp: str, t: float, dt: float = DT) -> str:
     return path
 
 
-def load_job_bits(bits_path: str, lat: Lattice, eta: float = ETA, prefix: str | None = None) -> JobBits:
+def card_of(prefix: str) -> str:
+    """'preset.card:' -> 'card'.  The card name itself contains dots, so the
+    split is on the FIRST one."""
+    p = (prefix or "").rstrip(":")
+    return p.split(".", 1)[1] if "." in p else p
+
+
+def load_job_bits(bits_path: str, lat: Lattice, eta: float = ETA, prefix: str | None = None,
+                  card: str | None = None) -> JobBits:
     """data/hw/htq_bits_<id>.npz -> JobBits (pub arrays only; meta keys skipped).
-    ``prefix`` ('preset.card:' from campaign.name_prefix) keeps only that
-    preset's pubs and strips the prefix, so composed campaigns are analysed
-    one card at a time; None keeps un-prefixed pubs only."""
+
+    ``prefix`` ('preset.card:' from campaign.name_prefix) keeps exactly that
+    preset's pubs; ``card`` keeps every pub of that card whatever preset it
+    came from.  Prefer ``card``: a card can belong to several presets (the
+    production packet is in both prod-bridge and qpdf-scan), and selecting on
+    one preset then silently hides the rest of its pubs.  None keeps
+    un-prefixed pubs only."""
     z = np.load(bits_path, allow_pickle=True)
     bits = {}
     for k in z.files:
         if z[k].dtype != np.uint8 or z[k].ndim != 2:
             continue
         pre, bare = split_prefix(k)
-        if (prefix or "") == pre:
+        keep = card_of(pre) == card if card else (prefix or "") == pre
+        if keep:
             bits[bare] = z[k]
     job_id = str(z["job_id"]) if "job_id" in z.files else os.path.basename(bits_path)
     return JobBits(bits, lat, job_id, eta)
@@ -556,16 +569,21 @@ def load_job_bits(bits_path: str, lat: Lattice, eta: float = ETA, prefix: str | 
 def analyze(bits_paths, ideal_template: str, out_template: str, ns: int, center: int,
             times=None, components=COMPONENTS, eta: float = ETA, backend: str = "",
             anc: str = "X", wing: bool = True, log=print, prefix: str | None = None,
-            card: str | None = None, wing_surrogate: str | None = None) -> dict:
+            card: str | None = None, wing_surrogate: str | None = None,
+            select_by_card: bool = False) -> dict:
     """Bits files (one per job) -> slice npz files.  -> {(comp, t): path}.
-    ``prefix`` selects one preset/card of a composed campaign; ``wing_surrogate``
+    ``prefix`` selects one preset/card of a composed campaign, or
+    ``select_by_card`` selects every pub of ``card`` whatever preset it came
+    from -- which is what a card in two presets needs.  ``wing_surrogate``
     supplies the wing-anchor target for slices whose ideal grid stops short."""
     lat = Lattice(ns)
-    jobs = [load_job_bits(p, lat, eta, prefix) for p in bits_paths]
+    by_card = card if (card and select_by_card) else None
+    jobs = [load_job_bits(p, lat, eta, prefix, card=by_card) for p in bits_paths]
     jobs = [j for j in jobs if j.bits]
     if not jobs:
         avail = available_prefixes(bits_paths)
-        raise ValueError(f"no pubs matching prefix={prefix!r} in {list(bits_paths)}; "
+        raise ValueError(f"no pubs matching {'card=' + repr(by_card) if by_card else 'prefix=' + repr(prefix)}"
+                         f" in {list(bits_paths)}; "
                          f"available prefixes: {avail or ['(none - unprefixed pubs only)']}")
     if not components:
         raise ValueError("no components requested")

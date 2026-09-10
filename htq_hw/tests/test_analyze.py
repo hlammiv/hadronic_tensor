@@ -323,3 +323,25 @@ def test_analyze_drops_components_the_pubs_cannot_build(tmp_path):
     with pytest.raises(ValueError, match="can be built"):
         A.analyze([bits], tpl, str(tmp_path / "x_{comp}_t{t:.1f}.npz"), 6, 2,
                   components=["01", "11"], log=None)
+
+
+def test_card_selection_spans_presets(tmp_path):
+    """The production packet is in both prod-bridge and qpdf-scan. Selecting
+    on one preset's prefix hides the other's pubs, which is how a full
+    rehearsal came back with zero slices: the card's j0 pubs were in
+    prod-bridge while the prefix picked qpdf-scan."""
+    from htq_hw import campaign as CP
+    lat = Lattice(6)
+    card = "prod_k1.26_s0.75_ns50"
+    names = ([f"prod-bridge.{card}:j0_t0.0_Z", f"prod-bridge.{card}:j0_t0.5_Z"]
+             + [f"qpdf-scan.{card}:qpdf_t0.0_qXXm1", f"qpdf-scan.{card}:qpdf_t0.0_qZ"]
+             + [f"vac-w00.prod_vac_ns50:j0_t0.0_Z"])
+    p = str(tmp_path / "htq_bits_m.npz")
+    np.savez(p, job_id="m", backend="b", pub_names=np.array(names),
+             **{n: np.zeros((4, lat.n_wires), np.uint8) for n in names})
+    one = A.load_job_bits(p, lat, prefix=f"qpdf-scan.{card}:")
+    assert set(one.bits) == {"qpdf_t0.0_qXXm1", "qpdf_t0.0_qZ"}      # one preset only
+    both = A.load_job_bits(p, lat, card=card)
+    assert set(both.bits) == {"j0_t0.0_Z", "j0_t0.5_Z", "qpdf_t0.0_qXXm1", "qpdf_t0.0_qZ"}
+    assert "j0_t0.0_Z" in A.load_job_bits(p, lat, card="prod_vac_ns50").bits
+    assert len(A.load_job_bits(p, lat, card="prod_vac_ns50").bits) == 1

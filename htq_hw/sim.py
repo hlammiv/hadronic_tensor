@@ -694,6 +694,8 @@ def rehearse(be, lat: Lattice, card, emb: T.Embedding, specs, shots: dict, ideal
         if len(comps) < len(components):
             T._log(f"{cname}: {sorted(fams)} pubs only -> components {comps} "
                    f"(dropped {[c for c in components if c not in comps]})", log)
+        # a card can be in several presets (the production packet is in both
+        # prod-bridge and qpdf-scan), so select on the card, not on one preset
         prefix = CP.name_prefix(presets.get(cname, ""), cname) if len(cards) > 1 else None
         out_t = os.path.join(out_dir, ("slice_{comp}_t{t:.1f}.npz" if len(cards) == 1
                                        else f"{cname}_slice_{{comp}}_t{{t:.1f}}.npz"))
@@ -701,6 +703,7 @@ def rehearse(be, lat: Lattice, card, emb: T.Embedding, specs, shots: dict, ideal
             got = A.analyze([bits_path], ideal_template, out_t, lat.ns, emb.center,
                             components=comps, eta=cdict["couplings"]["eta"],
                             backend=meta["backend"], log=log, prefix=prefix, card=cname,
+                            select_by_card=len(cards) > 1,
                             wing_surrogate=A.wing_path_for(wing_surrogate, cname))
         except ValueError as e:          # e.g. a card with only qpdf pubs
             T._log(f"analyze skipped for {cname}: {e}", log)
