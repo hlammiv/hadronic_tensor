@@ -125,7 +125,8 @@ three agree bit for bit on the released sample.
 On the released 30k-shot `ibm_kingston` equal-time sample
 (`data/hw/sq_bits_kingston.npz`), against the exact MPS cloud, using the
 matched-filter amplitude over `1 ≤ |x - c| ≤ 6` (the self term at `x = c` is
-excluded: it is trivially reproduced and would swamp the fit):
+excluded: it is trivially reproduced and would swamp the fit; the manuscript
+uses `≤ 4`, which agrees to four decimals):
 
 | window | checks imposed | shots kept | fraction | cloud amplitude / exact |
 |---|---|---|---|---|
@@ -151,13 +152,14 @@ Read off: the raw device recovers a quarter of the connected cloud; window 2
 saturates around **70%** by window 4–6, after which the shot error grows
 faster than the signal. Window 2–3 is the sweet spot.
 
-> **Note for the manuscript.** The text states the post-selection "un-damps
-> the connected screening cloud from ∼30% to ∼80% of its exact depth". The
-> ∼30% raw figure is confirmed (0.253 by matched filter, 0.27–0.30 site by
-> site). The ∼80% is not reached by these bits at any window: the published
-> `PS_WIN = 2` gives 0.60, and the amplitude saturates at ∼0.70. Site by site
-> at window 2 the ratios on the significant cloud sites are 0.62, 0.68, 0.62,
-> 0.65. Worth reconciling before the next version.
+> **Agreement with the manuscript.** An earlier draft summarised this as
+> un-damping the cloud "from ∼30% to ∼80% of its exact depth", which these
+> bits do not support at any window. The current draft replaces that with the
+> patch table above, and its entries (0.25, 0.46, 0.60, 0.67 at 30000, 11653,
+> 6415, 3613 shots) reproduce the independent measurement here exactly. The
+> draft defines the fit window as `0 < |x - x₀| ≤ 4` where this module
+> defaults to `≤ 6`; the two agree to four decimals, so the choice is
+> immaterial, but `r_max=4` reproduces the published definition literally.
 
 ### 2.3 Scope: equal-time only
 

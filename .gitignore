@@ -33,6 +33,7 @@ reports/
 # not for the public repo: award paperwork (signatures), third-party papers,
 # collaborator review material, scratch
 letter/
+main_v3.tex
 refs/
 ref
 ref/

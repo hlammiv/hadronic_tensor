@@ -210,7 +210,7 @@ refuses rather than something a reader has to notice:
   does the reduction in the reference convention, pinned to the ideal references to 1e-12. End to end at
   Ns = 50: 21 + 21 rehearsed pubs at 2e4 shots give ⟨x⟩ = 0.3913 ± 0.0042 against the ideal 0.3891 (0.5σ).
 
-## 8. Paper fixes (applied and reviewed 2026-09-04)
+## 8. Paper fixes (applied and reviewed 2026-09-04; verified against paper/main_v4.tex 2026-09-11)
 
 1. `scattering.gauge_fixed_system` overwrote the single-meson entry with higher levels; the "exact
    eigenstate ⟨x⟩ = 0.61 / 0.85" was computed on the wrong state. True band-1: 0.332 (Ns = 10),
@@ -221,6 +221,13 @@ refuses rather than something a reader has to notice:
 3. The β anchor is fine as published (checked against MPS truth).
 4. W·M → 2 in the IBM one-pager is the wrong relativistic criterion: it is met at η ≈ 1.95 without
    relativistic dispersion. The curvature criterion E″(0) = 1/M needs η ≈ 2.3, which is what relA uses.
+
+Checked in the current draft (`paper/main_v4.tex`, gitignored, not in the public repo): ⟨H⟩ is quoted as
+−49.37; the wrong-eigenstate ⟨x⟩ = 0.61 does not appear anywhere, and neither does any quasi-PDF result
+(the parton mentions are all citations), so item 1 has nothing to correct in the manuscript; item 4 was
+the one-pager, not the paper. The Gauss-law post-selection section has been rewritten since v3: the loose
+"∼30% to ∼80%" claim is gone, replaced by the patch table, whose entries (0.25 / 0.46 / 0.60 / 0.67 at
+30000 / 11653 / 6415 / 3613 shots) reproduce the independent measurement in `docs/METHODS.md` exactly.
 
 ## 9. Live risks
 

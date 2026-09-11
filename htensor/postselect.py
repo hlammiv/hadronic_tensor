@@ -93,13 +93,15 @@ def connected_j0_correlator(bits, lat, center: int):
 
 
 def cloud_amplitude(bits, lat, center: int, exact, window: int = 2,
-                    r_min: int = 1, r_max: int = 6):
+                    r_min: int = 1, r_max: int = 4):
     """Matched-filter amplitude of the measured screening cloud against an
     exact (MPS) reference: 1.0 means the device reproduces it fully.
 
     Fit region |x - center| in [r_min, r_max] on the ring, excluding the
     self term at x = center, which is trivially reproduced and would swamp
-    the fit.  -> (amplitude, error, kept shots).
+    the fit.  The default 0 < |x - center| <= 4 is the published definition;
+    widening it to 6 moves the amplitude in the fourth decimal.
+    -> (amplitude, error, kept shots).
     """
     m = keep_mask(bits, lat, center, window)
     g, err = connected_j0_correlator(bits[m], lat, center)
