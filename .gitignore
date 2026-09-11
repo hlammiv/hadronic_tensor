@@ -31,17 +31,15 @@ scratch/
 reports/
 
 # not for the public repo: award paperwork (signatures), third-party papers,
-# collaborator review material, scratch
-letter/
-main_v3.tex
-refs/
-ref
-ref/
-scratchpad/
+# collaborator review material, internal planning, scratch
+# campaign/  - award letter (signatures), run logs, internal reports, scratch
+# archive/   - superseded drafts, old plans, third-party papers
+# notes/feedback/ - collaborator review comments
+# data/work/ - working caches and checkpoints (prep MPS, kappa ensemble, ckpts, dry runs)
+# paper/annotations/ - annotated PDFs from collaborators
+campaign/
+archive/
+notes/feedback/
+data/work/
+paper/annotations/
 *.xml
-mike
-mike/
-mike_changes.pdf
-flo
-flo/
-Hadronic_FLO.pdf
