@@ -38,6 +38,16 @@ paper figures rendered from exactly these arrays.
 | `cgkinA` | CGK inelastic A | (0.1, 0.4, 1.0) |
 | `cgkinB` | CGK inelastic B | (0.2, 0.4, 1.0) |
 
+## Layout
+
+Everything in `data/` is a published result: the arrays the paper cites and the
+figures rendered from them. Hardware runs are in `data/hw/` (see its README).
+
+`data/work/` is **working state, not results**, and is not released: preparation
+MPS caches (`prep/`), the κ trajectory ensemble (`kappa16/`), long-run
+checkpoints (`*_ckpt.pkl`), unrouted comparison grids and simulator dry-run
+seeds. Scripts regenerate all of it; nothing there is an input to a figure.
+
 ## Device data versus simulation
 
 Some `.npz` files here hold **per-shot bitstrings** and it is not always
