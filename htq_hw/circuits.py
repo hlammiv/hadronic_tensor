@@ -382,11 +382,23 @@ def base_circuit(lat: Lattice, card: dict, kind: str = "J0",
                  gadget_center: int | None = None) -> QuantumCircuit:
     """prep + h(anc) + insertion gadget on n_wires (scripts/ibm_hardware.py:152-159).
     ``gadget_center`` (default ``center``) lets the dither family insert J0 at
-    site center+1 while the packet stays centred."""
+    site center+1 while the packet stays centred.
+
+    ``kind="plain"`` omits both the ancilla Hadamard and the insertion, giving
+    the plain-evolution circuit that measures B_v = <psi|U+(t) J0(v) U(t)|psi>
+    directly.  Reading B_v off a Hadamard pub instead gives the ancilla average
+    (B^uninserted + B^inserted)/2, which is harmless for the packet (the lever
+    id_a - A0 is 0.023 there) but wrong for the vacuum by more than the signal.
+    The ancilla wire is kept in the register and left idle, so the plain and
+    Hadamard circuits share a layout and differ by one CZ and one H: their
+    damping is as close as it can be, which is what lets the two be calibrated
+    against each other."""
     center = center if center is not None else card["center"]
     gadget_center = center if gadget_center is None else gadget_center
     qc = QuantumCircuit(lat.n_wires)
     qc.compose(prep_circuit(card, lat.ns, center), range(lat.n_qubits), inplace=True)
+    if kind == "plain":
+        return qc
     qc.h(lat.ancilla)
     qc.compose(insertion_gadget(lat, kind, gadget_center, accumulate, anc_site=center), inplace=True)
     return qc

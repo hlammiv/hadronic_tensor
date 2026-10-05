@@ -625,20 +625,24 @@ def rehearse(be, lat: Lattice, card, emb: T.Embedding, specs, shots: dict, ideal
     t0 = time.time()
     for s in specs:
         qc = pubs[s.name]
-        fam = "j0" if s.mirror else s.family
+        # mirrors share the j0 bundle, except the plain family, whose mirror is
+        # its own insertion-free circuit
+        fam = s.family if s.family == "plain" else ("j0" if s.mirror else s.family)
         cname = s.card or (default_card["name"] if default_card else "")
         card_s = cards[cname]
         bnd = bundles[(cname, fam)]
         qpdf = s.family == "qpdf"
-        # a qpdf pub is preparation only: no ancilla, no insertion, no evolution,
-        # so its "gadget" is empty and its layout is the prep bundle's own
+        # neither a qpdf pub nor a plain-evolution pub carries an ancilla or an
+        # insertion, so the "gadget" is empty for both.  qpdf stops there; plain
+        # still evolves, so it keeps a normal bundle with physics/mirror blocks.
+        no_gadget = qpdf or s.family == "plain"
         base_layout = bnd[1] if qpdf else bnd.base_layout
         if big:
             # split: cached prep state + logical gadget, then the ISA block + readout
             if (cname, fam) not in init_by_fam:
                 ps = prep_mps(card_s, lat, emb.center, cache_dir, cap, threads=threads, log=log)
                 gad = QuantumCircuit(lat.n_wires)
-                if not qpdf:
+                if not no_gadget:
                     kind, off = CP.FAMILY_GADGET[fam]
                     gad.h(lat.ancilla)
                     gad.compose(C.insertion_gadget(lat, kind, emb.center + off, "direct"), inplace=True)

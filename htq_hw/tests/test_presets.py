@@ -14,20 +14,29 @@ from htq_hw.model import Lattice, gauss_terms, to_sparse_pauli_op
 
 def test_preset_counts_and_structure(scratch):
     core = CP.preset_specs("relA-core")
-    assert len(core) == 12 * 18 + 9 + 2 * 18 + 4 * 18 == 333
-    assert sum(s.stretch for s in core) == 72 and {s.t for s in core if s.stretch} == set(CP.STRETCH_TIMES)
+    assert len(core) == 12 * 18 + 9 + 2 * 18 + 4 * 18 + 37 == 370   # +37 plain B_v pubs
+    assert sum(s.stretch for s in core) == 72 + 8 and {s.t for s in core if s.stretch} == set(CP.STRETCH_TIMES)
     per = [s for s in core if s.t == 0.5 and abs(s.dt - 0.5) < 1e-9]
-    assert len(per) == 18 and sum(s.mirror for s in per) == 6 and sum(s.family == "j0d" for s in per) == 3
-    assert sum(1 for s in core if s.t == 0) == 9                      # no dither refs
-    assert len([s for s in core if abs(s.dt - 0.25) < 1e-9]) == 36
+    assert len(per) == 20 and sum(s.mirror for s in per) == 7 and sum(s.family == "j0d" for s in per) == 3
+    assert sum(s.family == "plain" for s in per) == 2        # B_v physics + its mirror
+    assert sum(1 for s in core if s.t == 0) == 10                     # 9 refs, no dither, + the plain B_v ref
+    assert len([s for s in core if abs(s.dt - 0.25) < 1e-9]) == 40   # 36 + 2 dt-half slices x 2 plain
     bridge = CP.preset_specs("prod-bridge")
-    assert len(bridge) == 16 * 9 + 6 and {s.family for s in bridge} == {"j0", "j0d"}
+    assert len(bridge) == 16 * 9 + 6 + 33                      # +33 plain B_v pubs
+    assert {s.family for s in bridge} == {"j0", "j0d", "plain"}
     vac = CP.preset_specs("vac-w00")
-    assert len(vac) == 50 and {s.card for s in vac} == set(CP.VAC_CARDS.values()) and {s.readout for s in vac} == {"Z"}
+    assert len(vac) == 100 and {s.card for s in vac} == set(CP.VAC_CARDS.values()) and {s.readout for s in vac} == {"Z"}
     q = CP.preset_specs("qpdf-scan")
     # 4 kinds x 5 separations + the qZ density pub that supplies h(0)
     assert len(q) == 8 * 21 and all(s.family == "qpdf" and s.n_steps == 0 for s in q)
     assert sum(s.readout == "qZ" for s in q) == 8
+    # plain-evolution B_v pubs: one reference at t=0, then physics+mirror per slice
+    for name, n_slices in (("relA-core", 18), ("prod-bridge", 16), ("vac-w00", 12)):
+        pl = [s for s in CP.preset_specs(name) if s.family == "plain"]
+        n_cards = len({s.card for s in pl})
+        assert len(pl) == n_cards * (1 + 2 * n_slices), (name, len(pl))
+        assert all(s.readout == "Z" and s.anc_basis == "X" for s in pl)
+        assert sum(s.mirror for s in pl) == n_cards * n_slices
     assert all(s.name.startswith(f"{s.preset}.{s.card}:") for s in core + bridge + vac + q)
     p = CP.parse_pub_name(core[-1].name)
     assert p["prefix"] == "relA-core.relA_k1.26_s0.75_ns50:" and p["mirror"] and p["t"] == 8.0
@@ -36,7 +45,7 @@ def test_preset_counts_and_structure(scratch):
 def test_compose_stretch_last_and_jobs():
     specs = CP.compose_presets(("relA-core", "prod-bridge", "vac-w00", "qpdf-scan"))
     names = [s.name for s in specs]
-    assert len(set(names)) == len(names) == 701
+    assert len(set(names)) == len(names) == 821
     first = next(i for i, s in enumerate(specs) if s.stretch)
     assert all(s.stretch for s in specs[first:]) and not any(s.stretch for s in specs[:first])
     jobs = CP.group_jobs(specs, 8)
@@ -52,7 +61,7 @@ def test_compose_stretch_last_and_jobs():
                 assert CP.pub_name("j0", s.t, True, s.readout, s.anc_basis, s.dt, s.prefix) in j
     plan = CP.shots_plan(specs, {n: 1000 for n in names}, 180, 250e-6, weighting="equal")
     sp = plan["split"]
-    assert abs(sp["committed"] - 128.5) < 1 and abs(sp["stretch"] - 18.0) < 0.1 and sp["contingency"] > 30
+    assert abs(sp["committed"] - 139.6) < 1 and abs(sp["stretch"] - 18.8) < 0.2 and sp["contingency"] > 20
     assert all(plan["shots"][s.name] >= 30000 for s in specs if s.mirror)
     assert plan["shots"][[s for s in specs if s.family == "qpdf"][0].name] == 20000
 

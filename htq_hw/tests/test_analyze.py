@@ -345,3 +345,33 @@ def test_card_selection_spans_presets(tmp_path):
     assert set(both.bits) == {"j0_t0.0_Z", "j0_t0.5_Z", "qpdf_t0.0_qXXm1", "qpdf_t0.0_qZ"}
     assert "j0_t0.0_Z" in A.load_job_bits(p, lat, card="prod_vac_ns50").bits
     assert len(A.load_job_bits(p, lat, card="prod_vac_ns50").bits) == 1
+
+
+# ---- plain-evolution probe one-point ---------------------------------------
+
+def test_calib_prefers_the_plain_pub_and_falls_back(tmp_path):
+    """B_v should come from the insertion-free circuit when the job carries
+    one. The Hadamard marginal is (B_uninserted + B_inserted)/2, which is
+    harmless for a packet but wrong for the vacuum by more than the signal."""
+    from htq_hw import campaign as CP
+    from htq_hw import sim as S
+    lat = Lattice(6)
+    tpl = str(tmp_path / "ideal_{family}.npz")
+    S.write_ideal_grids(C.load_card(), 6, 2, ("j0",), [0.0, 0.5], tpl, threads=2)
+    grid = A.IdealGrid(tpl.format(family="j0"))
+    assert grid.b_plain(0.0) is not None and grid.b_plain(0.5) is not None
+    assert grid.b_plain(0.5).shape == grid.b_ideal(0.5).shape
+
+    def job_with(names):
+        bits = {n: np.zeros((16, lat.n_wires), np.uint8) for n in names}
+        return A.JobBits(bits, lat, "j", A.ETA)
+
+    had = [A.pub_name(f, t, m, "Z", "X", A.DT)
+           for f in ("j0",) for t, m in ((0.0, False), (0.5, False), (0.5, True))]
+    plain = [A.pub_name("plain", t, m, "Z", "X", A.DT)
+             for t, m in ((0.0, False), (0.5, False), (0.5, True))]
+
+    both = A._calib_J0(job_with(had + plain), "j0", 0.5, grid, grid, 2, wing=False)
+    assert both is not None and both["b_source"] == "plain"
+    only = A._calib_J0(job_with(had), "j0", 0.5, grid, grid, 2, wing=False)
+    assert only is not None and only["b_source"] == "marginal"      # old data still analyses

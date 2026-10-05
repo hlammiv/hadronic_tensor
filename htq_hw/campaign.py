@@ -37,7 +37,11 @@ from .model import Lattice
 
 READOUTS = ("Z", "XYA", "XYB")
 PHYSICS_FAMILIES = ("j0", "j1p1", "j1p2")
-FAMILY_GADGET = {"j0": ("J0", 0), "j1p1": ("J1a", 0), "j1p2": ("J1b", 0), "j0d": ("J0", 1)}
+# family -> (insertion kind, site offset from centre).  "plain" carries no
+# insertion and no ancilla Hadamard: it measures the probe one-point B_v
+# directly (circuits.base_circuit, kind="plain").
+FAMILY_GADGET = {"j0": ("J0", 0), "j1p1": ("J1a", 0), "j1p2": ("J1b", 0), "j0d": ("J0", 1),
+                 "plain": ("plain", 0)}
 DEFAULT_TIMES = tuple(round(0.5 * k, 2) for k in range(1, 13))
 HALF_DT = 0.25
 DT_HALF_TIMES = (0.5, 1.0)
@@ -114,11 +118,18 @@ def manifest(times=DEFAULT_TIMES, j1_mirrors: bool = False, dither: bool = False
              im: bool = False, dt_half: bool = False, refs: bool = True,
              dt_half_times=DT_HALF_TIMES, families=PHYSICS_FAMILIES, readouts=READOUTS,
              mirror_readouts=None, dither_refs=None, stretch_times=(), card: str = "",
-             preset: str = "") -> list[PubSpec]:
+             preset: str = "", plain: bool = False) -> list[PubSpec]:
     """Ordered pub specs (see module docstring).  Default: 12 x 12 + 9 = 153.
     ``families``/``readouts`` restrict the physics pubs (e.g. j0 x Z only);
     ``stretch_times`` adds slices flagged stretch (their own groups, ordered
-    last); ``dither_refs`` (default = ``dither``) controls j0d t = 0 refs."""
+    last); ``dither_refs`` (default = ``dither``) controls j0d t = 0 refs.
+
+    ``plain`` adds, per slice, a plain-evolution pub and its depth-matched
+    mirror, read in Z.  These measure the probe one-point B_v directly instead
+    of taking it from the Hadamard pub's ancilla marginal, which is the average
+    of the inserted and uninserted branches.  The distinction is worth 0.7% of
+    peak on a packet but more than 100% on the vacuum, where the lever
+    (id_a - A0) is 0.41 rather than 0.023, so a measured vacuum needs it."""
     fams = list(families) + (["j0d"] if dither else [])
     ref_fams = list(families) + (["j0d"] if (dither if dither_refs is None else dither_refs) else [])
     mirror_fams = ["j0"] + (["j1p1"] if j1_mirrors else [])
@@ -129,12 +140,15 @@ def manifest(times=DEFAULT_TIMES, j1_mirrors: bool = False, dither: bool = False
         slices += [(float(t), int(round(t / HALF_DT)), HALF_DT, False) for t in dt_half_times]
     slices.sort()
     slices += sorted((float(t), int(round(t / DT)), DT, True) for t in stretch_times)
+    want_plain = plain and any(f in ("j0", "j0d") for f in fams)
     specs = []
     if refs:
         for anc in ancs:
             for fam in ref_fams:
                 for r in readouts:
                     specs.append(_spec(fam, 0.0, False, r, anc, 0, DT, card, preset))
+        if want_plain:                       # B_v reference at t = 0, no mirror needed
+            specs.append(_spec("plain", 0.0, False, "Z", "X", 0, DT, card, preset))
     for t, n, dt, stretch in slices:
         for anc in ancs:
             for fam in fams:
@@ -143,6 +157,9 @@ def manifest(times=DEFAULT_TIMES, j1_mirrors: bool = False, dither: bool = False
             for fam in mirror_fams:
                 for r in mirror_readouts:
                     specs.append(_spec(fam, t, True, r, anc, n, dt, card, preset, stretch))
+        if want_plain:
+            specs.append(_spec("plain", t, False, "Z", "X", n, dt, card, preset, stretch))
+            specs.append(_spec("plain", t, True, "Z", "X", n, dt, card, preset, stretch))
     return specs
 
 
@@ -180,14 +197,15 @@ def preset_specs(name: str) -> list[PubSpec]:
     if name == "relA-core":
         return manifest(times=t12, j1_mirrors=True, dither=True, dither_refs=False, dt_half=True,
                         dt_half_times=(0.5, 1.0), stretch_times=STRETCH_TIMES,
-                        card="relA_k1.26_s0.75_ns50", preset=name)
+                        card="relA_k1.26_s0.75_ns50", preset=name, plain=True)
     if name == "prod-bridge":
         return manifest(times=tuple(round(0.5 * k, 2) for k in range(1, 17)), families=("j0",), dither=True,
-                        dither_refs=True, card="prod_k1.26_s0.75_ns50", preset=name)
+                        dither_refs=True, card="prod_k1.26_s0.75_ns50", preset=name, plain=True)
     if name == "vac-w00":
         out = []
         for tag, card in VAC_CARDS.items():
-            out += manifest(times=t12, families=("j0",), readouts=("Z",), card=card, preset=name)
+            out += manifest(times=t12, families=("j0",), readouts=("Z",), card=card, preset=name,
+                            plain=True)
         return out
     if name == "qpdf-scan":
         out = []
@@ -295,6 +313,9 @@ def _build_card_pubs(be, lat, card, emb, specs, basis, seed, cache_dir, log, str
         bundles[(card["name"], "qpdf")] = (isa, fl)
     ref = cb.get("j0", next(iter(cb.values()), None))
     for fam, b in cb.items():
+        # plain included: sharing j0's layout is what makes the B_v calibration
+        # comparable to the ancilla term's, since the two circuits then differ
+        # by one CZ and one H on the same physical qubits
         if b.base_layout != ref.base_layout:
             msg = f"{card['name']} family {fam}: base final layout differs from j0 (mirror would not share its skeleton)"
             if strict:
@@ -392,7 +413,9 @@ def shots_plan(specs, n2q: dict, budget_minutes: float = 36.0, rep_time_s: float
         'split': {'committed', 'stretch', 'contingency'} minutes at rep_time_s}."""
     specs = list(specs)
     if weighting == "equal":
-        sbf = {"qpdf": 20000} if shots_by_family is None else shots_by_family     # prep-only bilinears: O(1) signals
+        # O(1) signals need far fewer shots than the ancilla interference term:
+        # the prep-only bilinears, and the plain-evolution probe one-point B_v.
+        sbf = {"qpdf": 20000, "plain": 15000} if shots_by_family is None else shots_by_family
         shots = {s.name: int(max(sbf.get(s.family, shots_per_pub), mirror_floor if s.mirror else 0)) for s in specs}
         return _finish_plan(specs, n2q, shots, {s.name: float("nan") for s in specs}, budget_minutes,
                             rep_time_s, None, mirror_floor)

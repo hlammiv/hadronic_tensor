@@ -52,6 +52,30 @@ square-lattice LADDER (Nighthawk 12x10, 218 edges; 50-cycle of matter sites)
       anc  (next to s24)
 ```
 
+### 3.1 Why the probe one-point has its own circuit
+
+`B_v` read off a Hadamard pub is `<I_anc (x) J0(v)>`, the average of the
+inserted and uninserted branches, not the `<psi|U+(t) J0(v) U(t)|psi>` the
+reconstruction wants.  The contamination is exactly zero at `t = 0`, grows to
+0.17 by `t = 5`, and is confined inside the light cone.
+
+It reaches the connected correlator only through `(id_a - A0)`.  For a boosted
+packet the insertion site sits near its staggered identity value, so that lever
+is `-0.023` and the convention costs 0.7% of peak, inside shot noise.  For the
+vacuum `A0 = 0.087` against `id_a = 0.5`, the lever is `+0.41`, and against the
+exact connected vacuum correlator the marginal misses by 0.05 to 0.10 where the
+signal peaks at 0.079: wrong by more than the thing it measures.  Since the
+vacuum is subtracted from the packet pointwise and the two levers differ, that
+error does not cancel.
+
+So every `j0`-probing preset carries a `plain` pub and a depth-matched plain
+mirror per slice, read in Z.  The circuit keeps the ancilla wire in the register
+but idle, so it shares `j0`'s layout and differs by one CZ and one H: the two
+calibrations then see nearly the same channel, which is asserted in
+`build_pub_circuits`.  `analyze` prefers the plain pub and falls back to the
+marginal when a job has none, so earlier data still reduces.  Credit to Declan
+Millar (IBM) for the diagnosis, hlammiv/hadronic_tensor#1.
+
 `choose_embedding` picks ring / ladder / grid-cycle / transpiler automatically and scores
 candidates with the target's 2q and readout error rates.  It searches the **operational** graph (dead
 qubits and out-of-threshold couplers removed) and, when the pristine templates do not fit, grows cycles
@@ -69,6 +93,7 @@ the same layout; `Embedding.info["search"]` records what stopped it.
 | j1p1 | Y_48 Z_49 X_50 | c_a = +eta/4, id_a = 0 | parity ladder: basis change, cx, cx, CZ(anc, 48), cx, cx, undo |
 | j1p2 | X_48 Z_49 Y_50 | c_a = -eta/4, id_a = 0 | same skeleton as j1p1 |
 | j0d (option) | J0 at site 25 | dither control | one CZ |
+| plain | none | probe one-point B_v | no ancilla H, no gadget |
 
 Each pub = prep + gadget + Trotter block (n = t/dt steps, or the mirror block with total angle
 1e-8) + readout layer (Z: matter Z, links X; XYA: even matter Y, odd X, links Z; XYB: the
@@ -325,7 +350,7 @@ Steps, each a PASS/WARN/FAIL line in the record:
 | target | with `--require-real`, a stand-in silently substituted for the named device |
 | embedding | no ladder/ring on the *operational* graph, or redundancy < 2 (one dead qubit away from a transpiler fallback) |
 | cards | a card whose ideal grids are missing, have no t = 0 row, or stop short of its slices with no wing surrogate |
-| circuits | any of the 701 pubs failing to build, or a physics/mirror skeleton mismatch |
+| circuits | any of the 821 pubs failing to build, or a physics/mirror skeleton mismatch |
 | plan | a shot plan over budget, or a mirror below the shot floor |
 | check (full) | an ISA circuit whose logical expectation values disagree with the ideal grids above `--tol` |
 | rehearse (full) | a card that produces no slices, or a noiseless kappa(centre) off 1 by more than `--kappa-tol` |

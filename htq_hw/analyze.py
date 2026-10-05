@@ -194,7 +194,17 @@ class IdealGrid:
         return self.vec(f"XT{term}", 0.0)
 
     def b_ideal(self, t: float) -> np.ndarray:
+        """Probe one-point as the HADAMARD pub measures it: <I_anc (x) J0(v)>,
+        the average of the inserted and uninserted branches."""
         return self.vec("B", t)
+
+    def b_plain(self, t: float):
+        """Probe one-point as a PLAIN-evolution pub measures it:
+        <psi|U+(t) J0(v) U(t)|psi>, with no ancilla and no insertion.
+        -> None when the grid predates the plain reference."""
+        if "one_pt_J0" not in self.z.files:
+            return None
+        return np.asarray(self.z["one_pt_J0"][self.row(t)], dtype=float)
 
 
 def _fmt(template: str, family: str, card: str | None = None) -> str:
@@ -369,12 +379,23 @@ def _calib_J0(job: JobBits, family: str, t: float, ideal_fam: IdealGrid, ideal_j
     m = job.est(mname, "Z")
     sx_i0 = ideal_j0.sx_ideal0("J0")
     b_i0 = ideal_j0.b_ideal(0.0)
+    # Prefer a plain-evolution pub for the probe one-point.  The Hadamard
+    # marginal is (B_uninserted + B_inserted)/2, which reaches the connected
+    # correlator only through (id_a - A0): 0.023 for a packet but 0.41 for the
+    # vacuum, where it is wrong by more than the signal.  Falls back to the
+    # marginal when the job carries no plain pub, so older data still analyses.
+    bp_name = pub_name("plain", t, False, "Z", anc, dt)
+    bp_mirror = pub_name("plain", t, True, "Z", anc, dt) if t > 0 else bp_name
+    b_ideal0 = ideal_j0.b_plain(0.0) if ideal_j0.b_plain(0.0) is not None else b_i0
+    use_plain = job.has(bp_name) and job.has(bp_mirror) and ideal_j0.b_plain(0.0) is not None
+    bsrc, bmir, b_anchor = (job.est(bp_name, "Z"), job.est(bp_mirror, "Z"), b_ideal0) if use_plain \
+        else (p, m, b_i0)
     if t > 0:
         kap, kerr = kappa_from_mirror(m["sx"], m["sxe"], sx_i0)
-        bet = beta_from_mirror(m["B"], b_i0)
+        bet = beta_from_mirror(bmir["B"], b_anchor)
     else:   # t = 0 references are reported raw (kappa = beta = 1)
         kap, kerr, bet = np.ones(lat_ns(job)), np.zeros(lat_ns(job)), np.ones(lat_ns(job))
-    b_cal = 0.5 + (p["B"] - 0.5) / bet
+    b_cal = 0.5 + (bsrc["B"] - 0.5) / bet
     sN = np.zeros_like(b_cal)
     wing_source = "off"
     if wing:
@@ -389,9 +410,10 @@ def _calib_J0(job: JobBits, family: str, t: float, ideal_fam: IdealGrid, ideal_j
     anc_cal = c_a * p["sx"] / kap
     anc_raw = c_a * p["sx"]
     var = ((c_a / kap) ** 2 * p["sxe"] ** 2 + (c_a / kap) ** 2 * p["sx"] ** 2 * kerr ** 2
-           + (id_a * p["Be"] / np.abs(bet)) ** 2 + (id_a * sN) ** 2)
+           + (id_a * bsrc["Be"] / np.abs(bet)) ** 2 + (id_a * sN) ** 2)
     return dict(anc_cal=anc_cal, anc_raw=anc_raw, var=var, kap=kap, bet=bet, b_cal=b_cal,
-                B=p["B"], Be=p["Be"], bvar=p["Be"] ** 2 / bet ** 2 + sN ** 2, N=p["N"],
+                b_source="plain" if use_plain else "marginal",
+                B=bsrc["B"], Be=bsrc["Be"], bvar=bsrc["Be"] ** 2 / bet ** 2 + sN ** 2, N=p["N"],
                 gauss=p["gauss"], gauss_m=m["gauss"], xa=p["xa"], mirror=mname,
                 wing_applied=(wing_source in ("grid", "surrogate")), wing_source=wing_source)
 
