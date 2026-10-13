@@ -163,7 +163,8 @@ for t, path in TIER3.items():
                  kappa_v=s["kap"][None, :], beta_v=s["bet"][None, :],
                  b_cal=s["b_cal"][None, :], id_a=id_a, c_a=c_a,
                  id_b=id_b, tier=3, backend="ibm_kingston",
-                 nshot=s["N"], merged_jobs=np.array(T15JOBS))
+                 nshot=s["N"], nshot_per_obs=s["N"],
+                 merged_jobs=np.array(T15JOBS))
         print(f"   -> {OUT[t]}")
         continue
     bit = b_ideal(t)
@@ -212,7 +213,12 @@ for t, path in TIER3.items():
         chi = (w_new * (C_new - Re_m) ** 2 + w_t3 * (C3f.real - Re_m) ** 2)
         e_m = e_m * np.sqrt(np.maximum(chi, 1.0))
         C_out = Re_m + 1j * C3f.imag
-        e_out = np.sqrt(e_m ** 2 + e3fr ** 2)
+        # C_err is the error on Re, which is what every consumer of these
+        # files uses (all of them take .real).  Re is the MERGED quantity,
+        # so its error is e_m; adding e3fr back would re-count an input of
+        # the merge and leave the result less certain than the better input.
+        # The Im part is tier-3-only and keeps its own error alongside.
+        e_out, e_out_im = e_m, e3fr
         wb = 1.0 / np.maximum(p["Be"] ** 2 + sN ** 2, 1e-12)
         wb3 = 1.0 / np.maximum((e3 / (2 * id_a)) ** 2 + s3 ** 2, 1e-12)
         b_out = (wb * b_calf + wb3 * b3f) / (wb + wb3)
@@ -223,6 +229,7 @@ for t, path in TIER3.items():
     else:
         chi2 = np.nan
         C_out, e_out, b_out = C3f, e3f, b3f
+        e_out_im = e3f
         kap_out, bet_out = kap3, bet3
         nshot, jobs = int(d3["nshot"]), list(d3["merged_jobs"])
 
@@ -236,6 +243,7 @@ for t, path in TIER3.items():
     out = {k: d3[k] for k in d3.files}
     out["C_cal"] = C_out[None, :]
     out["C_err"] = e_out[None, :]
+    out["C_err_im"] = e_out_im[None, :]
     out["b_cal"] = b_out[None, :]
     out["kappa_v"] = kap_out[None, :]
     out["beta_v"] = bet_out[None, :]
@@ -270,7 +278,7 @@ for t, outp in RZZ_OUT.items():
              kappa_v=s["kap"][None, :], beta_v=s["bet"][None, :],
              b_cal=s["b_cal"][None, :], id_a=id_a, c_a=c_a,
              id_b=id_b, tier=3, backend="ibm_kingston",
-             nshot=s["N"],
+             nshot=s["N"], nshot_per_obs=s["N"],
              merged_jobs=np.array(
                  {0.5: ["d9nrg0mij12s73fu81fg"],
                   1.0: ["d9nra4ssfqic73arckc0"],
@@ -294,9 +302,18 @@ chi = wA * (a["C_cal"][0].real - Re_m)**2 + wJ * (j["C_cal"][0].real - Re_m)**2
 e_m = e_m * np.sqrt(np.maximum(chi, 1.0))
 out = {k: a[k] for k in a.files}
 out["C_cal"] = (Re_m + 1j * a["C_cal"][0].imag)[None, :]
-out["C_err"] = np.sqrt(e_m**2 + eA**2)[None, :]
+# Re is merged -> its error is e_m.  The CZ input's own eA is NOT added
+# back: it is one of the two things being merged, and re-counting it made
+# the merged slice (0.0355) less certain than the better input (0.0277).
+out["C_err"] = e_m[None, :]
+out["C_err_im"] = (a["C_err_im"][0] if "C_err_im" in a.files else eA)[None, :]
 out["kappa_v"] = (0.5 * (a["kappa_v"][0] + j["kappa_v"][0]))[None, :]
+# nshot is a sum over PUBS across every merged job, so it overstates the
+# sample behind any one observable; nshot_per_obs is the number that sets
+# the error (the rzz input here is a 7k scouting pass, not 277k).
 out["nshot"] = int(a["nshot"]) + int(j["nshot"])
+nA = int(a["nshot_per_obs"]) if "nshot_per_obs" in a.files else int(a["nshot"])
+out["nshot_per_obs"] = np.array([nA, int(j["nshot_per_obs"])])
 out["merged_jobs"] = np.array(list(a["merged_jobs"])
                               + ["d9nrg0mij12s73fu81fg"])
 np.savez("data/hw/job_tier3k_T05MERGED.npz", **out)
