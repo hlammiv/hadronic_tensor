@@ -162,7 +162,14 @@ def continuity_residual_xt(grids: TensorGrids, use_raw: bool = True,
         div = _div_bonds(src[c1])
         if form == "integral":
             lhs = src[c0][1:] - src[c0][:1]
-            rhs = -cumulative_simpson(div, dx=dt, axis=0, initial=0.0)[1:]
+            # cumulative_simpson casts complex input to real and discards the
+            # imaginary part (scipy warns), which leaves rhs real against a
+            # complex lhs and inflates the residual to O(1); integrate the
+            # two parts separately.
+            def _cs(a):
+                return cumulative_simpson(a, dx=dt, axis=0, initial=0.0)[1:]
+            rhs = -(_cs(div.real) + 1j * _cs(div.imag)
+                    if np.iscomplexobj(div) else _cs(div))
         elif form == "differential":
             lhs = (src[c0][2:] - src[c0][:-2]) / (2 * dt)
             rhs = -div[1:-1]
