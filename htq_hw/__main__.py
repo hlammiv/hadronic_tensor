@@ -21,13 +21,14 @@ submitted; real names only resolve a Target for transpilation.
 
 import argparse
 import json
+import math
 import os
 import pathlib
 import sys
 import time
 
 from . import CENTER, DEFAULT_CARD, DT, MIRROR_EPS, NS, __version__, check_versions
-from .campaign import DT_HALF_TIMES as CP_DT_HALF_TIMES
+from .campaign import DT_HALF_TIMES as CP_DT_HALF_TIMES, ESTIMATE_WAIT_SECONDS
 from . import circuits as C
 from . import target as T
 from .model import Lattice
@@ -292,7 +293,7 @@ def cmd_submit(args):
         recs = CP.submit(mode, pubs, info, shots, jobs, lat, emb, args.basis, args.out, service,
                          args.guard, tag=args.tag, log=log, est_seconds=est_s,
                          strict_guard=not args.no_strict_guard, batch=not args.no_batch,
-                         job_offset=(args.only_jobs[0] if args.only_jobs else 0))
+                         estimate_wait=args.estimate_wait, job_indices=args.only_jobs)
     except CP.BudgetError as e:
         raise SystemExit(f"budget guard: {e}")
     if not args.real and args.fetch:
@@ -363,17 +364,30 @@ def _qpdf_ref_key(card: str) -> str:
 def cmd_analyze(args):
     from . import analyze as A
     from . import campaign as CP
-    if args.qpdf:
-        return cmd_qpdf(args)
+    from scripts.run_outputs import analysis_directory
     if args.list_prefixes:
         print("prefixes present:", A.available_prefixes(args.bits) or "(none: unprefixed pubs only)")
         return
+    if args.run_dir:
+        directory = analysis_directory(args.run_dir)
+        args.out = str(directory / ("qpdf_{card}.npz" if args.qpdf else "slice_{comp}_t{t:.1f}.npz"))
+        print(f"analysis: {directory}")
+    elif not args.out:
+        raise SystemExit("analyze requires --run-dir or --out")
+    # Explicit templates must not replace earlier reductions either.
+    import glob
+    import re
+    pattern = re.sub(r"\{[^}]+\}", "*", args.out)
+    if glob.glob(pattern):
+        raise FileExistsError(f"Output already exists for {args.out}; choose a new output")
+    if args.qpdf:
+        return cmd_qpdf(args)
     card = C.load_card(args.card)
     center = _center_for(card, args.ns)
     prefix = args.prefix
     if prefix is None and args.preset:
         prefix = CP.name_prefix(args.preset, args.card)
-    A.analyze(args.bits, _ideal_template(args), args.slices, args.ns, center, args.times, args.components,
+    A.analyze(args.bits, _ideal_template(args), args.out, args.ns, center, args.times, args.components,
               card["couplings"]["eta"], args.backend, log=log, prefix=prefix, card=args.card,
               select_by_card=args.by_card, wing_surrogate=args.wing_surrogate)
 
@@ -381,6 +395,17 @@ def cmd_analyze(args):
 def cmd_acceptance(args):
     from . import acceptance as AC
     from . import record as R
+    from datetime import datetime, timezone
+    from pathlib import Path
+    import re
+
+    record_path = args.record
+    if record_path is None:
+        now = datetime.now(timezone.utc)
+        backend = re.sub(r"[^A-Za-z0-9_.-]+", "-", args.target)
+        backend = backend.removeprefix("ibm_").strip(".-") or "hardware"
+        record_path = (Path("data/hw/runs") / backend / now.strftime("%Y-%m-%d")
+                       / f"acceptance_{now.strftime('%H-%M-%S_%fZ')}.json")
     rec = AC.run(args.target, args.preset or ["relA-core", "prod-bridge", "vac-w00", "qpdf-scan"],
                  ns=args.ns, basis=args.basis, level=args.level, mode=args.mode,
                  require_real=args.require_real, cache_dir=args.cache, threads=args.threads,
@@ -389,7 +414,7 @@ def cmd_acceptance(args):
                  qpdf_shots=args.qpdf_shots, vac_shot_factor=args.vac_shot_factor,
                  kappa_tol=args.kappa_tol, refs=args.refs,
                  keep_rehearsal=args.keep_rehearsal, log=log)
-    path = R.write_record(args.record, "acceptance", rec, rec["status"])
+    path = R.write_record(record_path, "acceptance", rec, rec["status"])
     print()
     print(R.summarize({"kind": "acceptance", **rec, "env": R.env_stamp(), "git": R.git_stamp()}))
     print(f"\nrecord: {path}")
@@ -491,6 +516,13 @@ def _add_campaign_args(p):
     p.add_argument("--cache", default=str(pathlib.Path.home() / ".cache" / "htq_hw"))
 
 
+def _nonnegative_seconds(value):
+    seconds = float(value)
+    if not math.isfinite(seconds) or seconds < 0:
+        raise argparse.ArgumentTypeError("must be a finite, non-negative number of seconds")
+    return seconds
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="python -m htq_hw", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -564,8 +596,12 @@ def main(argv=None):
     sb.add_argument("--only-jobs", type=int, nargs="+", default=None)
     sb.add_argument("--guard", type=float, default=0.85,
                     help="fraction of the remaining allocation a submission may claim")
+    sb.add_argument("--estimate-wait", type=_nonnegative_seconds, default=ESTIMATE_WAIT_SECONDS,
+                    metavar="SECONDS", help="wait for a missing job estimate, refreshing every 5 s "
+                    "(default 60; 0 checks once; API request time may extend the wait)")
     sb.add_argument("--no-strict-guard", action="store_true",
-                    help="submit even when the remaining allocation cannot be read")
+                    help="proceed without waiting if a job estimate or remaining allocation "
+                    "cannot be read; explicit over-budget checks still apply")
     sb.add_argument("--no-batch", action="store_true",
                     help="submit job by job instead of inside one Batch")
     sb.add_argument("--tag", default="")
@@ -578,7 +614,9 @@ def main(argv=None):
     an = sub.add_parser("analyze")
     an.add_argument("bits", nargs="+", help="data/hw/htq_bits_<id>.npz files (one per job)")
     an.add_argument("--ideal", default=None)
-    an.add_argument("--slices", default="data/hw/slice_{comp}_t{t:.1f}.npz")
+    from scripts.run_outputs import add_analysis_arguments
+    add_analysis_arguments(an, required=False,
+                           output_help="explicit output template: {comp}/{t} for tensors, {card} for qPDF")
     an.add_argument("--times", type=float, nargs="+", default=None)
     an.add_argument("--components", nargs="+", default=["00", "10", "01", "11"])
     an.add_argument("--backend", default="")
@@ -596,7 +634,6 @@ def main(argv=None):
     an.add_argument("--qpdf", action="store_true",
                     help="reduce the qpdf-scan bilinears instead of the W slices: "
                          "connected h(m) -> q(x) -> <x> per card")
-    an.add_argument("--out", default="data/hw/qpdf_{card}.npz", help="--qpdf output template")
     an.add_argument("--ms", type=int, nargs="+", default=[1, 2, 3, 4, 5], help="--qpdf separations")
     an.add_argument("--k0", type=float, default=None, help="--qpdf boost (default: from the card)")
     an.add_argument("--refs", default=C.ref_path("qpdf_card_refs.npz"),
@@ -613,7 +650,8 @@ def main(argv=None):
     ac.add_argument("--level", choices=["fast", "full"], default="fast")
     ac.add_argument("--require-real", action="store_true",
                     help="fail unless the target is the live device (use before a real run)")
-    ac.add_argument("--record", default="data/hw/acceptance.json")
+    ac.add_argument("--record", default=None,
+                    help="report path (default: data/hw/runs/<backend>/<UTC-date>/acceptance_<UTC-time>.json)")
     ac.add_argument("--times", type=float, nargs="+", default=None)
     ac.add_argument("--tol", type=float, default=5e-3)
     ac.add_argument("--budget", type=float, default=180.0)

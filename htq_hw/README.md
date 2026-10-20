@@ -294,10 +294,42 @@ kappa is never applied to a J1 probe; the regression test
 the Z readout and 0.60 on the XY readouts and requires each component to
 recover its own value to 0.05 and to differ from the other by more than 0.15.
 
+XYA and XYB may be submitted in separate jobs. For components 10 and 11,
+the reducer calibrates each setting with the matching mirror from its own
+job, averages repeated measurements of that setting, then adds the two
+signed contributions and their independent variances. It matches the time,
+evolution step and ancilla basis within the selected card. A job already
+used for a complete component is not reused as a partial measurement.
+Missing mirrors or incomplete setting coverage are reported in the log.
+
+For split readouts, weak-reference median filling is restricted to the
+same job, setting and Pauli term. Complete jobs retain the original
+per-term filling across both settings, so weak-site estimates need not
+be identical under different job packaging. Slice files record all
+`merged_jobs` plus `split_readout_jobs` and `split_readout_calibration` when
+settings were combined across jobs. As before, `nshot` counts effective
+paired shots for J1 probes, rather than the sum of both settings' shots.
+
 Corollary for the manifest: a slice that carries J1 physics pubs must carry
 mirrors in all three readouts (the default), and `--j1-mirrors` additionally
-gives the j1p1 family its own mirror so the insertion-dependent part of the
-damping can be separated from the probe-dependent part.
+adds mirror pubs labelled `j1p1`. The current circuit builder uses the J0
+base for every mirror, including those labels: they are additional
+calibration replicas, not separate J1-insertion-base controls.
+
+### 4.4 Runtime mitigation settings
+
+`campaign._sampler` requests gate twirling for CZ circuits (disabled for the
+fractional RZZ basis), measurement twirling, and XY4 dynamical decoupling.
+The requested settings are saved in each job JSON. This Sampler submission
+does not configure TREX, an assignment-matrix readout correction, zero-noise
+extrapolation, or probabilistic error cancellation. Measurement twirling
+symmetrizes readout noise but does not, by itself, correct the resulting
+suppression of expectation values.
+
+The tensor reduction applies the mirror calibration described above after
+fetching the bitstrings. The qPDF reduction uses vacuum subtraction, without
+that tensor mirror correction. Gauss-law diagnostics are recorded by the
+ordinary readouts; postselection is not automatically applied by `analyze`.
 
 ## 5. Knobs IBM may tune, and invariants
 
@@ -326,9 +358,21 @@ allocation cannot be read, that is not treated as "it fits": a real submission s
 `--no-strict-guard` says to proceed without the assurance.
 
 The jobs then run inside one `Batch` with a single hoisted sampler, so they execute back to back
-instead of re-queueing 112 times (`--no-batch` to disable).  If the per-job guard cancels a job, the
-loop **stops** rather than sending the remaining jobs, and the cancelled job's metadata is written
-anyway, so no spent job id is ever lost.  Resume from where it stopped with `--only-jobs`.
+instead of re-queueing 112 times (`--no-batch` to disable). A newly submitted job may not yet have
+a usage estimate. The per-job guard waits up to **60 seconds**, refreshing the job handle every
+5 seconds because the SDK caches missing estimates. Set `--estimate-wait SECONDS` to change this
+polling deadline (`0` checks once); time spent in API requests can extend the wait. An available
+over-budget estimate stops submission immediately, as does an unreadable remaining allocation.
+If the estimate is still missing at the deadline, strict mode cancels the job and stops.
+`--no-strict-guard` skips this wait and permits missing estimates or allocation readings, while
+still refusing explicit over-budget values.
+
+If the per-job guard cancels a job, the loop stops and records the cancelled job's metadata.
+The printed `--only-jobs` selection includes that cancelled job and every unsubmitted job,
+preserving the original campaign indices even when resuming a nonconsecutive selection.
+The job ID is saved before polling. If cancellation fails (for example, because the job finished
+while the guard waited), submission stops and records the error with `cancelled: null`; check
+that job's status before retrying it.
 
 ## 6. Acceptance gate
 

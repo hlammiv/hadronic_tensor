@@ -84,6 +84,67 @@ tree — send it and we will place it.
 
 ## Provenance
 
+### Separate analysis runs
+
+New hardware figures go under `data/hw/runs/<label>/<UTC timestamp>/` by
+default. The timestamp records when the analysis was run, not when the
+hardware measurements were acquired. Raw jobs retain their IBM job IDs.
+The tracked Kingston files directly under `data/` are historical outputs;
+new plotting runs do not replace them.
+
+`scripts/hw_w_tensor.py` uses `--label` for the directory label. Its existing
+`--out` option selects an explicit output prefix. Each run keeps figures,
+arrays, the command JSON and the diagnostic log together.
+
+The Kingston scripts `hw_w00_coarse.py` and `hw_t3_pubfigs.py` use the label
+`kingston` and accept `--out-dir`. To assemble and plot a new Kingston
+result in one directory, choose a new run path:
+
+```bash
+run_dir="data/hw/runs/kingston/$(date -u +%Y%m%dT%H%M%SZ)"
+PYTHONPATH=. .venv/bin/python scripts/hw_w00_coarse.py 3 --out-dir "$run_dir"
+PYTHONPATH=. .venv/bin/python scripts/hw_t3_pubfigs.py \
+  --tensor "$run_dir/hw_w00_coarse_t3.npz" --out-dir "$run_dir"
+```
+
+Without `--tensor`, the publication script reads the archived Kingston
+tensor at `data/hw_w00_coarse_t3.npz`. Its other inputs remain the original
+Kingston measurements. It is not a Phoenix plotter.
+
+These three scripts refuse an output prefix if matching files already
+exist, including when an output path is supplied explicitly. Choose a new
+run directory to repeat an analysis. Existing records and figures remain
+available for comparison.
+
+### Measurement records
+
 Whatever you send, include the device, the date, the shot count, and whether
 any mitigation was applied by the runtime (twirling, DD, readout mitigation).
 `docs/METHODS.md` documents what the analysis assumes about the raw sample.
+# Dated analysis outputs
+
+Use an existing campaign directory with `--run-dir` when reducing hardware
+data or running `hw_w_tensor.py`, `hw_w00_coarse.py`, or `hw_t3_pubfigs.py`.
+Each invocation creates a fresh `analysis/YYYY-MM-DD_HH-MM-SS_microsecondsZ/`
+directory inside that campaign. The outer date identifies the hardware
+campaign; the inner timestamp records the analysis start in UTC.
+
+For example, from the repository root:
+
+```sh
+PYTHONPATH=. python -m htq_hw --ns 50 analyze \
+  data/hw/runs/phoenix/2026-10-06/raw/htq_bits_*.npz \
+  --qpdf --run-dir data/hw/runs/phoenix/2026-10-06
+```
+
+Select tensor cards with the existing `--card` and `--by-card` options.
+The tensor plotter's `--slices` selects the input reduction explicitly;
+`--tensor` similarly selects the coarse tensor for `hw_t3_pubfigs.py`.
+No command automatically picks the latest reduction.
+
+`--out` remains an alternative for an explicit destination. For reduction
+it is a template (`slice_{comp}_t{t:.1f}.npz` or `qpdf_{card}.npz`); for
+`hw_w_tensor.py` it is a filename prefix, and for the two Kingston plotters
+it is a directory. It cannot be combined with `--run-dir`. This replaces
+the reducer's output `--slices` and the Kingston plotters' `--out-dir`.
+Existing outputs are protected from replacement.
