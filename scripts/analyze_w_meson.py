@@ -18,15 +18,15 @@ OI = ["#0072B2", "#D55E00", "#009E73", "#E69F00", "#CC79A7"]
 import sys as _sys, os as _os
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 from paper_style import *  # usetex + OI palette + dev()
-from run_outputs import check_output_prefix, output_directory
+from run_outputs import check_output_prefix, output_directory, in_place
 
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument("input", help="MPS production NPZ")
 p.add_argument("--out", help="output prefix (default: a new dated MPS run)")
 args = p.parse_args()
 path = args.input
-out = check_output_prefix(args.out if args.out else
-                          output_directory("meson", kind="mps") / (Path(path).stem + "_W"))
+out = (check_output_prefix(args.out) if args.out
+       else in_place(Path(path).with_suffix("").as_posix() + "_W"))
 d = np.load(path)
 ns, vc, k0 = int(d["ns"]), int(d["center"]), float(d["k0"])
 lat = Z2Lattice(ns, pbc=True)

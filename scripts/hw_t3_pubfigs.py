@@ -13,6 +13,7 @@ coarse tensor. The default tensor is the archived Kingston result.
 """
 
 import argparse
+from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -22,16 +23,21 @@ from paper_style import *  # usetex + OI palette + dev()
 import numpy as np
 
 from htensor import Z2Lattice
-from run_outputs import check_output_prefix, output_directory, analysis_directory, add_analysis_arguments
+from run_outputs import (check_output_prefix, output_directory, analysis_directory,
+                          add_analysis_arguments, in_place)
 
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument("--tensor", default="data/hw_w00_coarse_t3.npz",
                help="coarse Kingston tensor NPZ (default: archived result)")
 add_analysis_arguments(p, output_help="explicit output directory")
 args = p.parse_args()
-out_dir = output_directory("kingston", args.out) if args.out else analysis_directory(args.run_dir)
-for name in ("hw_t3_combined", "hw_t3_figA", "hw_t3_figB", "hw_cloud"):
-    check_output_prefix(out_dir / name)
+FIGS = ("hw_t3_combined", "hw_t3_figA", "hw_t3_figB", "hw_cloud")
+if args.out or args.run_dir:
+    out_dir = output_directory("kingston", args.out) if args.out else analysis_directory(args.run_dir)
+    for name in FIGS:
+        check_output_prefix(out_dir / name)
+else:
+    out_dir = Path(in_place("data/" + FIGS[0])).parent
 
 K0TAG = "k1.26"
 NS, CENTER = 50, 24

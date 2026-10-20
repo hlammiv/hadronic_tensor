@@ -21,15 +21,15 @@ OI = ["#0072B2", "#D55E00", "#009E73", "#E69F00", "#CC79A7", "#000000"]
 import sys as _sys, os as _os
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 from paper_style import *  # usetex + OI palette + dev()
-from run_outputs import check_output_prefix, output_directory
+from run_outputs import check_output_prefix, in_place
 
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument("input", nargs="?", default="data/w00_vac_ns50.npz")
 p.add_argument("--out", help="output prefix (default: a new dated MPS run)")
 args = p.parse_args()
 path = args.input
-out = check_output_prefix(args.out if args.out else
-                          output_directory("vacuum", kind="mps") / Path(path).stem)
+out = (check_output_prefix(args.out) if args.out
+       else in_place(Path(path).with_suffix("").as_posix()))
 d = np.load(path)
 ns, vc = int(d["ns"]), int(d["vc"])
 lat = Z2Lattice(ns, pbc=True)

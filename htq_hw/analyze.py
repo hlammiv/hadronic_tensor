@@ -885,7 +885,7 @@ def qpdf_vacuum_card(card: str, available) -> str | None:
     return cands[0] if cands else None
 
 
-QPDF_SIG_M = 5.0                      # paper window (scripts/qpdf_card_refs.py:42)
+QPDF_SIG_M = 5.0                      # paper window (scripts/qpdf_card_refs.py:46)
 QPDF_XS = np.linspace(-0.5, 1.5, 401)
 
 

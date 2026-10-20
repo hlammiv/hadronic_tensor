@@ -30,7 +30,8 @@ kingston sample the acceptance is 0.388 at window 1, and 0.072 with the
 columns permuted (scripts/check_raw_pubs.py).
 
 Canonical implementation of the logic that appears inline in
-scripts/hw_w00_coarse.py:29-70 and scripts/hw_cloud_figure.py:36-61;
+scripts/hw_w00_coarse.py:46-86 (`gauss_col` and the `sel` loop) and
+scripts/hw_cloud_figure.py:36-61;
 `tests/test_postselect.py` asserts the three agree bit for bit.
 """
 

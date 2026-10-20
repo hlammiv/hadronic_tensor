@@ -19,7 +19,7 @@ def sample():
 
 
 def _inline_gcol(b, lat, n):
-    """Verbatim from scripts/hw_w00_coarse.py:60 and hw_cloud_figure.py:36."""
+    """Verbatim from scripts/hw_w00_coarse.py:73 and hw_cloud_figure.py:36."""
     return ((-1) ** n * (1 - 2 * b[:, lat.site_qubit(n)])
             * (1 - 2 * b[:, lat.link_qubit(n - 1)])
             * (1 - 2 * b[:, lat.link_qubit(n)]))

@@ -49,7 +49,8 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from paper_style import OI, OI_DIV, dev  # noqa: E402
 from htensor import analysis, asymmetry, tensor  # noqa: E402
-from run_outputs import check_output_prefix, analysis_directory, add_analysis_arguments  # noqa: E402
+from run_outputs import (check_output_prefix, analysis_directory,  # noqa: E402
+                          add_analysis_arguments, in_place)
 
 p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 p.add_argument("--j0", required=True, help="MPS production npz, J0 insertion")
@@ -73,8 +74,9 @@ if not np.isfinite(args.kap_min):
     p.error("--kap-min must be finite")
 if not (np.isfinite(args.q0_range).all() and args.q0_range[0] < args.q0_range[1]):
     p.error("--q0-range requires finite MIN < MAX")
-out = check_output_prefix(args.out if args.out else
-                          analysis_directory(args.run_dir) / f"hw_w_tensor_t{args.tmax:.0f}")
+out = (check_output_prefix(args.out if args.out else
+                           analysis_directory(args.run_dir) / f"hw_w_tensor_t{args.tmax:.0f}")
+       if (args.out or args.run_dir) else in_place(f"data/hw_w_tensor_t{args.tmax:.0f}"))
 
 g = tensor.load_mps_components(args.j0, args.j1)
 lat, C, k0 = g.lat, g.center, g.k0

@@ -16,11 +16,29 @@ def analysis_directory(run_dir):
     return path
 
 
-def add_analysis_arguments(parser, *, output_help, required=True):
-    """Select campaign isolation or an explicit output, never both."""
+def add_analysis_arguments(parser, *, output_help, required=False):
+    """Select campaign isolation or an explicit output, never both.
+
+    Optional by default: with neither flag the caller falls back to the
+    artifact's canonical `data/` path through `in_place`.
+    """
     group = parser.add_mutually_exclusive_group(required=required)
     group.add_argument("--run-dir", help="existing hardware campaign directory; create analysis/<UTC timestamp>/")
     group.add_argument("--out", help=output_help)
+
+
+def in_place(prefix):
+    """The canonical `data/` path of a published artifact, replaceable.
+
+    Regenerating a tracked artifact where the paper cites it is what
+    reproduction means, and git already guards it, so `check_output_prefix`
+    deliberately does not apply here.  The guard still covers campaign
+    analysis directories and any explicit --out, which are records of a
+    particular run rather than regenerable products.
+    """
+    prefix = Path(prefix)
+    prefix.parent.mkdir(parents=True, exist_ok=True)
+    return str(prefix)
 
 
 def output_directory(campaign, explicit=None, *, kind="hw"):

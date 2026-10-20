@@ -29,7 +29,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from paper_style import OI, OI_DIV  # noqa: E402
 from htensor import asymmetry, tensor  # noqa: E402
-from run_outputs import check_output_prefix, output_directory  # noqa: E402
+from run_outputs import check_output_prefix, output_directory, in_place  # noqa: E402
 
 p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 p.add_argument("j0", help="MPS production grid with J0 insertion")
@@ -52,8 +52,9 @@ if out_tag:
 
 g = tensor.load_mps_components(path_j0, path_j1)
 lat, k0 = g.lat, g.k0
-tag = out_tag or check_output_prefix(output_directory(args.label or "tensor", kind="mps")
-                                     / f"w_tensor_ns{lat.ns}_k{k0:.2f}")
+name = f"w_tensor_ns{lat.ns}_k{k0:.2f}"
+tag = out_tag or (check_output_prefix(output_directory(args.label, kind="mps") / name)
+                  if args.label else in_place(f"data/{name}"))
 
 q0 = np.arange(-1.0, 6.001, 0.04)
 ks = np.arange(-(lat.nx // 2), lat.nx // 2 + 1)

@@ -14,6 +14,7 @@ and the sigma_k^2 extrapolation of <x> (the plane-wave intercept).
 
 import os
 import sys
+from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
@@ -29,7 +30,7 @@ from paper_style import OI  # noqa: E402
 from htensor import Z2Lattice, backends, quasipdf  # noqa: E402
 from htensor import currents as cur  # noqa: E402
 import argparse  # noqa: E402
-from run_outputs import check_output_prefix, output_directory  # noqa: E402
+from run_outputs import check_output_prefix, output_directory, in_place  # noqa: E402
 
 CARDS = [  # tag, couplings, vac file, params file
     ("prod", (0.7, 1.1, 1.3), "data/vac_prod.npz", "data/wp10reg_params_k1.26_L3.npz"),
@@ -50,9 +51,12 @@ SIG_M = args.sig_m
 MS = np.arange(1, MMAX + 1)     # spatial separations m -> z = +-2m (seam-free for m <= 10 around site 24)
 XS = np.linspace(-0.5, 1.5, 401)
 TAG = f"_m{MMAX}_s{SIG_M:g}" if args.mmax is not None else ""
-out_dir = output_directory("qpdf", args.out_dir, kind="mps")
-for name in ("qpdf_card_refs", "qpdf_width_scan"):
-    check_output_prefix(out_dir / (name + TAG))
+if args.out_dir:
+    out_dir = output_directory("qpdf", args.out_dir, kind="mps")
+    for name in ("qpdf_card_refs", "qpdf_width_scan"):
+        check_output_prefix(out_dir / (name + TAG))
+else:
+    out_dir = Path(in_place("data/qpdf_card_refs")).parent
 print(f"output directory: {out_dir}", flush=True)
 
 

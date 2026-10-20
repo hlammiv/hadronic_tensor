@@ -25,7 +25,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from htensor import Z2Lattice, analysis
-from run_outputs import check_output_prefix, output_directory, analysis_directory, add_analysis_arguments
+from run_outputs import (check_output_prefix, output_directory, analysis_directory,
+                          add_analysis_arguments, in_place)
 
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument("tmax", nargs="?", type=float, default=1.0)
@@ -34,8 +35,10 @@ p.add_argument("sig_xf", nargs="?", type=float, default=2.0)
 add_analysis_arguments(p, output_help="explicit output directory")
 args = p.parse_args()
 TMAX, PS_WIN = args.tmax, args.ps_win
-out = check_output_prefix((output_directory("kingston", args.out) if args.out else analysis_directory(args.run_dir))
-                          / f"hw_w00_coarse_t{TMAX:.0f}")
+name = f"hw_w00_coarse_t{TMAX:.0f}"
+out = (check_output_prefix((output_directory("kingston", args.out) if args.out
+                            else analysis_directory(args.run_dir)) / name)
+       if (args.out or args.run_dir) else in_place(f"data/{name}"))
 
 NS, VC = 50, 24
 K0TAG = "k1.26"
