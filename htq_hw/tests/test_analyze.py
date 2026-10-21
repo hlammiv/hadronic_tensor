@@ -647,3 +647,37 @@ def test_b_err_floor_uses_the_grid_then_the_surrogate(setup):
                  "odd": np.array([-0.02])}
     sN2, src2 = A.b_err_floor(b_cal, beyond, g, CENTER, surrogate)
     assert src2 == "surrogate" and sN2 is not None
+
+
+def test_the_imaginary_branch_has_no_t0_anchor_so_kappa_cannot_be_measured_on_it(setup):
+    """Why an Im tier needs kappa from the X branch, not its own.
+
+    kappa is the mirror signal over the IDEAL t = 0 signal
+    (`kappa_from_mirror`), and on the imaginary branch that denominator
+    vanishes identically: at t = 0 the two currents commute, so the
+    correlator is real and <Y_anc (x) J0(v)> has no connected part.  So
+    `kappa_from_mirror` is structurally inapplicable to Y, and the mirror's
+    measured Y signal is not a calibration but a null test: anything nonzero
+    there is noise or a coherent ancilla phase, which is the one mechanism
+    that would stop kappa_X from carrying over.  On the four archived
+    kingston tier-3 jobs that phase is 1.2 to 1.7 degrees, under 6 degrees at
+    2 sigma (data/hw/primitive/).
+
+    beta needs no such treatment: `beta_from_mirror` is built from the
+    ancilla-averaged probe one-point `B_v`, which carries no ancilla Pauli,
+    so it is the same number in either branch.
+    """
+    _, _, tpl = setup
+    g = A.IdealGrid(tpl.format(family="j0"))
+    idb = g.id_b()
+    sy0 = g.vec("YB", 0.0) - idb * g.scalar("Y", 0.0)
+    sx0 = g.sx_ideal0("J0")
+    assert np.abs(sy0).max() < 1e-12 * max(np.abs(sx0).max(), 1.0)
+    assert not (np.abs(sy0) > A.KAP_GUARD).any()
+    assert (np.abs(sx0) > A.KAP_GUARD).any()
+
+    # and it is only t = 0 that is empty: the branch does carry signal later,
+    # which is why it is worth measuring at all
+    t = TIMES[0]
+    sy = g.vec("YB", t) - idb * g.scalar("Y", t)
+    assert np.abs(sy).max() > A.KAP_GUARD
