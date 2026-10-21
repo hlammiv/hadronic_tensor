@@ -187,11 +187,23 @@ class IdealGrid:
     def id_b(self) -> np.ndarray:
         return np.array([(-1) ** v / 2 for v in range(self.ns)])
 
+    def s_ideal(self, anc: str, t: float, probe: str = "J0",
+                term: int | None = None) -> np.ndarray:
+        """Connected ancilla signal at time t in ancilla basis `anc`:
+        {anc}B_v - id_b <{anc}> (J0), or {anc}T{term}_b (J1).
+
+        At t = 0 the imaginary branch is identically zero, because the two
+        currents commute there and the correlator is real.  That is why
+        `kappa_from_mirror` cannot be anchored on Y: see
+        `kappa_for_basis` and the test of the same name.
+        """
+        if probe == "J0":
+            return self.vec(f"{anc}B", t) - self.id_b() * self.scalar(anc, t)
+        return self.vec(f"{anc}T{term}", t)
+
     def sx_ideal0(self, probe: str, term: int | None = None) -> np.ndarray:
         """Connected ancilla signal at t=0: XB_v - id_b X (J0) or XT{term}_b (J1)."""
-        if probe == "J0":
-            return self.vec("XB", 0.0) - self.id_b() * self.scalar("X", 0.0)
-        return self.vec(f"XT{term}", 0.0)
+        return self.s_ideal("X", 0.0, probe, term)
 
     def b_ideal(self, t: float) -> np.ndarray:
         """Probe one-point as the HADAMARD pub measures it: <I_anc (x) J0(v)>,
@@ -240,6 +252,63 @@ def beta_from_mirror(B_m, b_i0):
     """Published +0.5 anchor at every site (scripts/losch_t3_pool.py:131-133)."""
     ok = np.abs(b_i0 - 0.5) > KAP_GUARD
     return np.where(ok, (B_m - 0.5) / np.where(ok, b_i0 - 0.5, 1.0), 1.0)
+
+
+def mirror_phase(job, t: float, family: str = "j0", dt: float = DT,
+                 sx_i0=None) -> tuple[float, float]:
+    """-> (tan phi, err): the ancilla's coherent phase, from the mirror pubs.
+
+    The mirror's IDEAL imaginary signal is exactly zero (`IdealGrid.s_ideal`),
+    so whatever its Y pub returns is noise or a coherent ancilla phase, and a
+    phase is the one mechanism that mixes the real and imaginary branches:
+    measured = R(phi) . true, so on the mirror, where true_y = 0,
+
+        tan(phi) = sy_m / sx_m.
+
+    Pooled over sites by inverse variance, because the per-site sy_m is
+    noise-dominated.  (nan, nan) when the job carries no Y mirror.
+    On the four archived kingston tier-3 jobs this is 1.2 to 1.7 degrees.
+    """
+    mx = job.mirror_name(t, "Z", "X", family, dt)
+    my = job.mirror_name(t, "Z", "Y", family, dt)
+    if mx is None or my is None:
+        return float("nan"), float("nan")
+    x, y = job.est(mx, "Z"), job.est(my, "Z")
+    w = 1.0 / np.maximum(y["sxe"], 1e-12) ** 2
+    if sx_i0 is not None:
+        w = np.where(np.abs(sx_i0) > KAP_GUARD, w, 0.0)
+    den = float(np.sum(w * x["sx"] ** 2))
+    if den <= 0:
+        return float("nan"), float("nan")
+    return float(np.sum(w * y["sx"] * x["sx"]) / den), float(np.sqrt(1.0 / den))
+
+
+def derotate(re, im, tan_phi):
+    """Undo a coherent ancilla phase: true = R(-phi) . measured.
+
+    A nan phase leaves the pair alone, so a job with no Y mirror still
+    analyses (uncorrected, with the leakage left in the imaginary part).
+    """
+    if not np.isfinite(tan_phi):
+        return re, im
+    c = 1.0 / np.sqrt(1.0 + tan_phi ** 2)
+    sn = tan_phi * c
+    return c * re + sn * im, c * im - sn * re
+
+
+def kappa_for_basis(job, t: float, family: str, dt: float, anc: str, sx_i0):
+    """-> (kappa, kerr) for a slice read in ancilla basis `anc`.
+
+    kappa is the mirror signal over the IDEAL t = 0 signal, and on the
+    imaginary branch that denominator vanishes identically, so Y takes
+    kappa from the X mirror.  The damping is shared between the branches to
+    cos(phi), which the measured phase puts at 0.9997, so this costs 0.03%.
+    """
+    mname = job.mirror_name(t, "Z", "X" if anc == "Y" else anc, family, dt)
+    if mname is None:
+        return None, None
+    m = job.est(mname, "Z")
+    return kappa_from_mirror(m["sx"], m["sxe"], sx_i0)
 
 
 def wing_scatter(b_cal, b_ideal, center: int):
@@ -421,7 +490,9 @@ def _calib_J0(job: JobBits, family: str, t: float, ideal_fam: IdealGrid, ideal_j
     bsrc, bmir, b_anchor = (job.est(bp_name, "Z"), job.est(bp_mirror, "Z"), b_ideal0) if use_plain \
         else (p, m, b_i0)
     if t > 0:
-        kap, kerr = kappa_from_mirror(m["sx"], m["sxe"], sx_i0)
+        kap, kerr = kappa_for_basis(job, t, family, dt, anc, sx_i0)
+        if kap is None:
+            return None
         bet = beta_from_mirror(bmir["B"], b_anchor)
     else:   # t = 0 references are reported raw (kappa = beta = 1)
         kap, kerr, bet = np.ones(lat_ns(job)), np.zeros(lat_ns(job)), np.ones(lat_ns(job))
@@ -439,9 +510,13 @@ def _calib_J0(job: JobBits, family: str, t: float, ideal_fam: IdealGrid, ideal_j
     id_a = ideal_fam.id_a
     anc_cal = c_a * p["sx"] / kap
     anc_raw = c_a * p["sx"]
-    var = ((c_a / kap) ** 2 * p["sxe"] ** 2 + (c_a / kap) ** 2 * p["sx"] ** 2 * kerr ** 2
-           + (id_a * bsrc["Be"] / np.abs(bet)) ** 2 + (id_a * sN) ** 2)
-    return dict(anc_cal=anc_cal, anc_raw=anc_raw, var=var, kap=kap, bet=bet, b_cal=b_cal,
+    # var_anc is the ancilla signal's own error.  The imaginary part of C_cal
+    # is anc_cal alone (no b_cal term survives there), so Im needs this and
+    # not the probe one-point's contribution.
+    var_anc = (c_a / kap) ** 2 * (p["sxe"] ** 2 + p["sx"] ** 2 * kerr ** 2)
+    var = var_anc + (id_a * bsrc["Be"] / np.abs(bet)) ** 2 + (id_a * sN) ** 2
+    return dict(anc_cal=anc_cal, anc_raw=anc_raw, var=var, var_anc=var_anc,
+                kap=kap, bet=bet, b_cal=b_cal,
                 b_source="plain" if use_plain else "marginal",
                 B=bsrc["B"], Be=bsrc["Be"], bvar=bsrc["Be"] ** 2 / bet ** 2 + sN ** 2, N=p["N"],
                 gauss=p["gauss"], gauss_m=m["gauss"], xa=p["xa"], mirror=mname,
@@ -458,7 +533,10 @@ def _calib_J1(job: JobBits, family: str, t: float, ideal_j0: IdealGrid, anc: str
     pA, pB = (job.est(n, r) for n, r in zip(names, ("XYA", "XYB")))
     p1, p2 = term_split(pA, pB)
     if t > 0:
-        mnames = [job.mirror_name(t, r, anc, family, dt) for r in ("XYA", "XYB")]
+        # kappa comes from the X mirror even for a Y slice: the ideal
+        # imaginary signal at t = 0 is identically zero (kappa_for_basis).
+        kanc = "X" if anc == "Y" else anc
+        mnames = [job.mirror_name(t, r, kanc, family, dt) for r in ("XYA", "XYB")]
         if any(mn is None for mn in mnames):
             return None
         mA, mB = (job.est(n, r) for n, r in zip(mnames, ("XYA", "XYB")))
@@ -479,7 +557,7 @@ def _calib_J1(job: JobBits, family: str, t: float, ideal_j0: IdealGrid, anc: str
     one_e = eta / 4 * np.hypot(p1["Te"], p2["Te"])
     var = (c_a * eta / 4) ** 2 * ((p1["xTe"] ** 2 + p1["xT"] ** 2 * kerr1 ** 2) / kap1 ** 2
                                   + (p2["xTe"] ** 2 + p2["xT"] ** 2 * kerr2 ** 2) / kap2 ** 2)
-    return dict(anc_cal=c_a * xJ1_cal, anc_raw=c_a * xJ1_raw, var=var,
+    return dict(anc_cal=c_a * xJ1_cal, anc_raw=c_a * xJ1_raw, var=var, var_anc=var,
                 kap=np.minimum(kap1, kap2), kap1=kap1, kap2=kap2, one=one, one_e=one_e,
                 N=min(p1["N"], p2["N"]), mirror=mnames)
 
@@ -585,9 +663,20 @@ def _merge(slabs: list[dict], key: str = "anc_cal", var: str = "var"):
 
 def component_slice(comp: str, t: float, jobs: list[JobBits], ideals: dict, lat: Lattice,
                     center: int, backend: str = "", anc: str = "X", wing: bool = True,
-                    dt: float = DT, surrogate=None, log=None) -> dict | None:
+                    dt: float = DT, surrogate=None, log=None, im: bool = False) -> dict | None:
     """Assemble one (component, t, dt) slice from all jobs that carry its pubs.
-    t = 0 references are raw: kappa_v = 1 explicitly and raw_reference = True."""
+    t = 0 references are raw: kappa_v = 1 explicitly and raw_reference = True.
+
+    ``im`` also reduces the Y-ancilla pubs, when a job carries them, into the
+    imaginary part of ``C_cal``.  The published map keeps only the real part,
+    which forces W(-q0, q1) = W(q0, -q1) and makes the negative-q0 half of
+    every map a reflection; the imaginary part is what breaks that and gives
+    the transform its proper one-sided support.  kappa comes from the X
+    mirror (`kappa_for_basis`), beta is basis-independent, and the measured
+    (Re, Im) pair is de-rotated by the mirror's own coherent phase
+    (`mirror_phase`, `derotate`), which also shifts the real part by
+    O(phi . Im/Re).  A job with no Y pubs contributes to the real part only,
+    exactly as before."""
     fams, probe = COMPONENT_LAYOUT[comp]
     ideal_j0 = ideals["j0"]
     A0 = ideals[fams[0]].A0
@@ -622,6 +711,25 @@ def component_slice(comp: str, t: float, jobs: list[JobBits], ideals: dict, lat:
             slab["kap1"] = np.mean([p["kap1"] for p in parts], 0)
             slab["kap2"] = np.mean([p["kap2"] for p in parts], 0)
             slab["one"] = np.mean([p["one"] for p in parts], 0)
+        if im:
+            iparts = []
+            for fam in fams:
+                r = (_calib_J0(job, fam, t, ideals[fam], ideal_j0, center, "Y", wing, dt,
+                               surrogate=surrogate, log=log) if probe == "J0"
+                     else _calib_J1(job, fam, t, ideal_j0, "Y", dt))
+                if r is None:
+                    iparts = []
+                    break
+                iparts.append(r)
+            if iparts:
+                tan_phi, _ = mirror_phase(
+                    job, t, fams[0], dt,
+                    sx_i0=ideal_j0.sx_ideal0("J0") if probe == "J0" else None)
+                re_c, im_c = derotate(slab["anc_cal"],
+                                      sum(p["anc_cal"] for p in iparts), tan_phi)
+                slab["anc_cal"], slab["anc_cal_im"] = re_c, im_c
+                slab["var_im"] = sum(p["var_anc"] for p in iparts)
+                slab["tan_phi"] = tan_phi
         per_job.append(slab)
         complete_jobs.add(id(job))
     split = None
@@ -636,6 +744,15 @@ def component_slice(comp: str, t: float, jobs: list[JobBits], ideals: dict, lat:
         return None
     anc_cal, err = _merge(per_job)
     anc_raw, _ = _merge(per_job, key="anc_raw")
+    im_slabs = [s for s in per_job if "anc_cal_im" in s]
+    anc_im, err_im, tan_phi = None, None, float("nan")
+    if im_slabs:
+        anc_im, err_im = _merge(im_slabs, key="anc_cal_im", var="var_im")
+        phases = [s["tan_phi"] for s in im_slabs if np.isfinite(s["tan_phi"])]
+        tan_phi = float(np.mean(phases)) if phases else float("nan")
+        _log(f"  {comp} t={t:g}, dt={dt:g}: imaginary branch from "
+             f"{len(im_slabs)}/{len(per_job)} jobs, ancilla phase "
+             f"{np.degrees(np.arctan(tan_phi)):+.2f} deg", log)
     kap = np.ones(lat.ns) if t == 0 else np.mean([s["kap"] for s in per_job], 0)
     out = {"times": np.array([t]), "probes": np.arange(lat.ns), "id_a": id_a, "dt": float(dt),
            "raw_reference": bool(t == 0),
@@ -646,6 +763,12 @@ def component_slice(comp: str, t: float, jobs: list[JobBits], ideals: dict, lat:
                source for s in per_job for source in (s["jobs"] if "jobs" in s else [s["job"]])))),
            "component": comp, "t": float(t), "A0": float(np.real(A0)),
            "mask": (kap < KAP_MASK)[None, :]}
+    if anc_im is not None:
+        # C_err is the error on Re C_cal; the imaginary part carries no
+        # probe one-point term, so its error is the ancilla signal's alone.
+        out["C_err_im"] = np.real(err_im)[None, :]
+        out["anc_phase"] = np.array([tan_phi])
+        out["im_jobs"] = np.array([s["job"] for s in im_slabs if "job" in s])
     if split is not None:
         out["split_readout_jobs"] = np.array(split["jobs"])
         out["split_readout_calibration"] = "same-job mirrors; median fill per readout and Pauli term"
@@ -657,6 +780,8 @@ def component_slice(comp: str, t: float, jobs: list[JobBits], ideals: dict, lat:
         # with weight id_a, but G = C_cal - b_cal A0 carries it with weight
         # (id_a - A0), so a consumer needs the two separately: see
         # htensor.analysis.g_error.
+        if anc_im is not None:
+            C_cal = C_cal + 1j * anc_im
         out.update(C=(C_raw + 0j)[None, :], C_cal=(C_cal + 0j)[None, :], b_cal=(b_cal + 0j)[None, :],
                    b_err=np.real(b_err)[None, :],
                    beta_v=np.mean([s["bet"] for s in per_job], 0)[None, :],
@@ -664,6 +789,8 @@ def component_slice(comp: str, t: float, jobs: list[JobBits], ideals: dict, lat:
     else:
         one = np.mean([s["one"] for s in per_job], 0)
         C_cal = anc_cal + id_a * one + id_b * (A0 - id_a) + id_a * id_b
+        if anc_im is not None:
+            C_cal = C_cal + 1j * anc_im
         C_raw = anc_raw + id_a * one
         out.update(C=(C_raw + 0j)[None, :], C_cal=(C_cal + 0j)[None, :],
                    beta_v=np.ones((1, lat.ns)), one_pt=one[None, :],
@@ -683,6 +810,8 @@ def lat_ns(job: JobBits) -> int:
 SLICE_KEYS = ("times", "probes", "C", "C_cal", "C_err", "kappa_v", "beta_v", "id_a", "c_a",
               "id_b", "A0", "tier", "backend", "nshot", "merged_jobs", "component", "t", "dt",
               "raw_reference")
+# written only when the job carries Y-ancilla pubs and im=True
+SLICE_KEYS_IM = ("C_err_im", "anc_phase", "im_jobs")
 
 
 def slice_path(out_template: str, comp: str, t: float, dt: float = DT) -> str:
@@ -728,12 +857,17 @@ def analyze(bits_paths, ideal_template: str, out_template: str, ns: int, center:
             times=None, components=COMPONENTS, eta: float = ETA, backend: str = "",
             anc: str = "X", wing: bool = True, log=print, prefix: str | None = None,
             card: str | None = None, wing_surrogate: str | None = None,
-            select_by_card: bool = False) -> dict:
+            select_by_card: bool = False, im: bool | None = None) -> dict:
     """Bits files (one per job) -> slice npz files.  -> {(comp, t): path}.
     ``prefix`` selects one preset/card of a composed campaign, or
     ``select_by_card`` selects every pub of ``card`` whatever preset it came
     from -- which is what a card in two presets needs.  ``wing_surrogate``
-    supplies the wing-anchor target for slices whose ideal grid stops short."""
+    supplies the wing-anchor target for slices whose ideal grid stops short.
+
+    ``im`` reduces the Y-ancilla pubs into the imaginary part of ``C_cal``.
+    The default, None, lets the data decide: on when any Y pub is present,
+    off otherwise, so an imaginary tier is reduced correctly without anyone
+    having to remember a flag and older bits analyse exactly as before."""
     lat = Lattice(ns)
     by_card = card if (card and select_by_card) else None
     jobs = [load_job_bits(p, lat, eta, prefix, card=by_card) for p in bits_paths]
@@ -748,6 +882,10 @@ def analyze(bits_paths, ideal_template: str, out_template: str, ns: int, center:
     # a component whose insertion family was never measured cannot be built, so
     # filter on the pubs actually present rather than loading a grid that a
     # vacuum or j0-only card will never have
+    if im is None:
+        im = any(parse_pub_name(n)["anc_basis"] == "Y" for j in jobs for n in j.bits)
+        if im:
+            _log("Y-ancilla pubs present: reducing the imaginary branch too", log)
     have = {parse_pub_name(n)["family"] for j in jobs for n in j.bits}
     keep = components_for(have, components)
     if not keep:
@@ -768,7 +906,7 @@ def analyze(bits_paths, ideal_template: str, out_template: str, ns: int, center:
     for comp in components:
         for t, dt in sorted(present):
             sl = component_slice(comp, t, jobs, ideals, lat, center, backend, anc, wing, dt,
-                                 surrogate=surrogate, log=log)
+                                 surrogate=surrogate, log=log, im=im)
             if sl is None:
                 continue
             path = slice_path(out_template, comp, t, dt)
@@ -780,7 +918,9 @@ def analyze(bits_paths, ideal_template: str, out_template: str, ns: int, center:
                     f"kappa(center) {sl['kappa_v'][0][center]:.3f}, "
                     f"masked {int((~ok).sum())}/{ns}, median err "
                     f"{np.median(sl['C_err'][0][ok]) if ok.any() else np.nan:.4f}, "
-                    f"nshot {sl['nshot']} -> {path}")
+                    + (f"median Im err {np.median(sl['C_err_im'][0][ok]):.4f}, "
+                       if "C_err_im" in sl and ok.any() else "")
+                    + f"nshot {sl['nshot']} -> {path}")
     return written
 
 

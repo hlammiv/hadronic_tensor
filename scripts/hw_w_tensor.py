@@ -66,6 +66,12 @@ p.add_argument("--slices", required=True, help="template with {comp} and {t}")
 p.add_argument("--times", type=float, nargs="+", default=None, help="slice times (default 0..tmax step 0.5)")
 p.add_argument("--tmax", type=float, default=6.0)
 p.add_argument("--kap-min", type=float, default=0.05)
+p.add_argument("--im", default=None, action=argparse.BooleanOptionalAction,
+               help="keep the imaginary part of the connected correlator, when the slices "
+                    "carry it (C_err_im), on BOTH the hardware and the MPS reference.  "
+                    "The real part alone forces W(-q0,q1) = W(q0,-q1), so the q0 < 0 half "
+                    "of the map is a reflection; the imaginary part is what gives the "
+                    "transform its one-sided support.  Default: on when available")
 p.add_argument("--beta-min", type=float, default=0.01,
                help="mask probes with |beta| below this (default 0.01)")
 p.add_argument("--window", default="gauss", choices=("gauss", "kaiser", "dpss", "rect"),
@@ -192,6 +198,7 @@ for comp in tensor.COMPONENTS:
             raise ValueError(f"{path}: no MPS reference at t={t}; nearest is {g.times[ti]}")
         Ccal = np.asarray(d["C_cal"])[0]
         Cerr = np.asarray(d["C_err"])[0].real
+        Cerr_im = np.asarray(d["C_err_im"])[0].real if "C_err_im" in d.files else None
         kap = np.asarray(d["kappa_v"])[0].real if "kappa_v" in d.files else np.ones(NS)
         bet = np.asarray(d["beta_v"])[0].real if "beta_v" in d.files else np.ones(NS)
         used_bcal = "b_cal" in d.files and comp in ("00", "01")
@@ -215,7 +222,7 @@ for comp in tensor.COMPONENTS:
         if not ok.any():
             log_msg.append(f"{comp} t={t}: omitted; no finite calibrated probes above kappa threshold")
             continue
-        rows[t] = (G_hw, Cerr, ok, kap)
+        rows[t] = (G_hw, Cerr, ok, kap, Cerr_im)
         paths.append(path)
         steps.append(float(d["dt"]) if "dt" in d.files else DT)
         log_msg.append(f"{comp} t={t}: {int((~ok).sum())} masked ({int((~finite).sum())} nonfinite/invalid, "
@@ -233,15 +240,33 @@ for comp in tensor.COMPONENTS:
         continue
     if not np.allclose(steps, steps[0], rtol=0, atol=1e-9):
         raise ValueError(f"{comp}: cannot pool different evolution steps in one tensor")
-    Gh = np.array([rows[t][0] for t in times]).real
+    have_im = [t for t in times if rows[t][4] is not None]
+    use_im = bool(have_im) and args.im is not False
+    if args.im and not have_im:
+        log_msg.append(f"{comp}: --im requested but no slice carries C_err_im; real part only")
+    if use_im and len(have_im) < len(times):
+        raise ValueError(f"{comp}: slices at t={[t for t in times if t not in have_im]} carry no "
+                         f"imaginary part while others do; reduce the tier uniformly or pass --no-im")
+    Gh = np.array([rows[t][0] for t in times])
+    # a contiguous copy rather than a .real view: the view's stride reaches
+    # BLAS inside onesided_ft, which is a summation-order hazard even though
+    # it happens to make no difference on this grid
+    Gh = Gh if use_im else np.ascontiguousarray(Gh.real)
     Ge = np.array([rows[t][1] for t in times])
+    if use_im:
+        # W = 2[Re(K) Gr - Im(K) Gi], and |Re K|, |Im K| <= dt dx w, so the
+        # published bound's convention carries over with the two in quadrature
+        Ge = np.hypot(Ge, np.array([rows[t][4] for t in times]))
+        log_msg.append(f"{comp}: imaginary part kept on {len(have_im)}/{len(times)} slices; "
+                       f"W(-q0,q1) = W(q0,-q1) no longer holds by construction")
     mask = np.array([rows[t][2] for t in times])
     # Calibration can leave NaNs on rejected probes. Zero them explicitly;
     # multiplication by a zero mask would still contaminate the transform.
     Gh = np.where(mask, Gh, 0.0)
     Ge = np.where(mask, Ge, 0.0)
     ti_mps = [int(np.argmin(np.abs(g.times - t))) for t in times]
-    Gr = g.g[comp][ti_mps].real
+    Gr = (g.g[comp][ti_mps] if use_im
+          else np.ascontiguousarray(g.g[comp][ti_mps].real))
     if comp in ("00", "01"):          # charge conservation: sum_x <J0(x,t) J^nu(0)>_conn = 0
         for i, t in enumerate(times):
             m = mask[i]
@@ -250,7 +275,9 @@ for comp in tensor.COMPONENTS:
             w2 = Ge[i][m] ** 2
             w2 = w2 / w2.sum() if w2.sum() > 0 else np.full(m.sum(), 1.0 / m.sum())
             Gh[i][m] -= viol * w2
-            log_msg.append(f"{comp} t={t}: sum-rule violation {viol:+.4f} projected out")
+            log_msg.append(f"{comp} t={t}: sum-rule violation "
+                            + (f"{viol.real:+.4f}{viol.imag:+.4f}j" if use_im else f"{viol:+.4f}")
+                            + " projected out")
     tmax = times[-1] if len(times) > 1 else 1.0
     sig_t = (args.sig_t_p if args.sig_t_p is not None else max(0.45, tmax / 2))
     W_hw[comp] = onesided(times, x, Gh, mask, sig_t)
@@ -268,6 +295,8 @@ for comp in tensor.COMPONENTS:
                     f"kappa_{comp}": np.array([rows[t][3] for t in times]),
                     f"G_hw_{comp}": Gh, f"G_ref_{comp}": np.where(mask, Gr, 0.0),
                     f"G_err_{comp}": Ge, f"x_{comp}": x, f"sig_t_{comp}": sig_t,
+                    f"projection_{comp}": ("complex connected correlator" if use_im
+                                           else "Re connected correlator"),
                     f"hardware_dt_{comp}": steps[0], f"source_slices_{comp}": paths})
     source_paths[comp], source_dt[comp] = paths, steps[0]
     log_msg.append(f"{comp}: t_max={tmax}, sigma_t={sig_t:.2f}, W_err={W_err[comp]:.3f}, "

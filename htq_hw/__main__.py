@@ -389,7 +389,8 @@ def cmd_analyze(args):
         prefix = CP.name_prefix(args.preset, args.card)
     A.analyze(args.bits, _ideal_template(args), args.out, args.ns, center, args.times, args.components,
               card["couplings"]["eta"], args.backend, log=log, prefix=prefix, card=args.card,
-              select_by_card=args.by_card, wing_surrogate=args.wing_surrogate)
+              select_by_card=args.by_card, wing_surrogate=args.wing_surrogate,
+              im=args.im)
 
 
 def cmd_acceptance(args):
@@ -628,6 +629,9 @@ def main(argv=None):
                          "(a card can be in several presets)")
     an.add_argument("--list-prefixes", action="store_true",
                     help="list the prefixes present in the bits files and exit")
+    an.add_argument("--im", default=None, action=argparse.BooleanOptionalAction,
+                    help="reduce the Y-ancilla pubs into Im C_cal (default: on when "
+                         "any Y pub is present).  --no-im forces the real part only")
     an.add_argument("--wing-surrogate", default=C.ref_path("wing_surrogate_{tag}.npz"), metavar="NPZ",
                     help="wing-anchor target for slices whose ideal grid stops short "
                          "(scripts/wing_surrogate.py build)")

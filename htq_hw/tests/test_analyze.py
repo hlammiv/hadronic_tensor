@@ -681,3 +681,86 @@ def test_the_imaginary_branch_has_no_t0_anchor_so_kappa_cannot_be_measured_on_it
     t = TIMES[0]
     sy = g.vec("YB", t) - idb * g.scalar("Y", t)
     assert np.abs(sy).max() > A.KAP_GUARD
+
+
+def _ideal_im_C(ideals, comp, t, ns, eta):
+    """Exact Im C_cal: only the ancilla signal is complex, so the identity and
+    probe one-point terms of `rebuild_C` drop out of the imaginary part."""
+    fams, probe = A.COMPONENT_LAYOUT[comp]
+    tot = np.zeros(ns)
+    for f in fams:
+        g = ideals[f]
+        c_a = A.FAMILY_COEFF[f] * (eta if f.startswith("j1") else 1.0)
+        if probe == "J0":
+            tot += c_a * g.s_ideal("Y", t)
+        else:
+            tot += c_a * eta / 4 * (g.vec("YT1", t) - g.vec("YT2", t))
+    return tot
+
+
+def test_analyze_recovers_the_exact_imaginary_correlator_from_Y_pubs(setup, tmp_path):
+    """End to end for an imaginary tier: Y pubs in, complex C_cal out.
+
+    The imaginary part is what breaks W(-q0, q1) = W(q0, -q1) and gives the
+    transform its one-sided support, so it has to come back right.  kappa is
+    taken from the X mirror, since the ideal imaginary signal at t = 0 is
+    identically zero and cannot anchor it; the synthetic bits damp both
+    ancilla bases by the same kappa, which is what makes that legitimate.
+    """
+    card, lat, tpl = setup
+    eta = card["couplings"]["eta"]
+    specs = CP.manifest(times=TIMES, im=True)
+    assert any(CP.parse_pub_name(s.name)["anc_basis"] == "Y" for s in specs)
+    assert any(CP.parse_pub_name(s.name)["anc_basis"] == "Y" and s.mirror for s in specs)
+    kappa = {"Z": 0.7, "XYA": 0.55, "XYB": 0.55}
+    bits = _synthetic_bits(card, lat, specs, kappa, 20000, seed=17)
+    bpath = str(tmp_path / "htq_bits_im.npz")
+    np.savez_compressed(bpath, job_id="im", backend="synthetic",
+                        pub_names=np.array(list(bits)), **bits)
+    out_tpl = str(tmp_path / "im_{comp}_t{t:.1f}.npz")
+    written = A.analyze([bpath], tpl, out_tpl, NS, CENTER, eta=eta,
+                        backend="synthetic", log=None)
+    ideals = A.load_ideal_grids(tpl, ("j0", "j1p1", "j1p2"))
+    t = TIMES[0]
+
+    for comp in A.COMPONENTS:
+        z = np.load(written[(comp, t)], allow_pickle=True)
+        for k in A.SLICE_KEYS_IM:
+            assert k in z.files, (comp, k)
+        assert z["C_cal"].dtype == np.complex128
+        im, err = z["C_cal"][0].imag, z["C_err_im"][0]
+        ref = _ideal_im_C(ideals, comp, t, NS, eta)
+        # where the ideal real signal is strong enough for kappa to be measured
+        g0 = ideals["j0"]
+        strong = (np.abs(g0.sx_ideal0("J0")) > A.KAP_GUARD if comp in ("00", "01")
+                  else np.minimum(np.abs(g0.sx_ideal0("J1", 1)),
+                                  np.abs(g0.sx_ideal0("J1", 2))) > A.KAP_GUARD)
+        assert strong.any()
+        pull = np.abs(im - ref)[strong] / np.maximum(err[strong], 1e-12)
+        assert np.median(pull) < 3.0, (comp, np.median(pull), im[strong], ref[strong])
+        assert np.abs(err[strong]).max() < 0.5
+        # the injected damping is a bit flip, not a rotation, so no phase
+        assert np.abs(np.degrees(np.arctan(float(z["anc_phase"][0])))) < 5.0
+
+    # and the imaginary part is real information: it does not vanish, and the
+    # real part still matches, so nothing was traded for it
+    z00 = np.load(written[("00", t)], allow_pickle=True)
+    assert np.abs(z00["C_cal"][0].imag).max() > 0.02
+    assert np.abs(z00["C_cal"][0].real - _ideal_C(ideals, "00", t, NS, eta)).max() < 0.15
+
+
+def test_no_im_forces_the_real_part_only_even_with_Y_pubs_present(setup, tmp_path):
+    """--no-im has to be a real override, and the real part it returns must be
+    the one the published pipeline would have produced."""
+    card, lat, tpl = setup
+    eta = card["couplings"]["eta"]
+    bits = _synthetic_bits(card, lat, CP.manifest(times=TIMES, im=True),
+                           {"Z": 0.7, "XYA": 0.55, "XYB": 0.55}, 4000, seed=19)
+    bpath = str(tmp_path / "htq_bits_noim.npz")
+    np.savez_compressed(bpath, job_id="noim", backend="synthetic",
+                        pub_names=np.array(list(bits)), **bits)
+    written = A.analyze([bpath], tpl, str(tmp_path / "re_{comp}_t{t:.1f}.npz"), NS, CENTER,
+                        eta=eta, backend="synthetic", log=None, im=False)
+    z = np.load(written[("00", TIMES[0])], allow_pickle=True)
+    assert "C_err_im" not in z.files
+    assert np.abs(z["C_cal"][0].imag).max() == 0.0
