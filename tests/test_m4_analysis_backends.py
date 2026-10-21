@@ -199,3 +199,65 @@ def test_time_window_defaults_to_the_published_gaussian():
                                                window="gauss"))
     with pytest.raises(ValueError):
         analysis.time_window(t, 1.0, "hann")
+
+
+def test_a_real_integrand_forces_the_map_to_be_a_q0_q1_reflection():
+    """For real G the one-sided transform obeys W(-q0, q1) = W(q0, -q1), so
+    the q0 < 0 half of a measured map is the q0 > 0 half with q1 flipped and
+    carries no independent information.  Conjugating e^{i(q0 t - q1 x)} is
+    the same as flipping both arguments, and 2 Re is insensitive to it.
+    scripts/w_map_symmetry.py reports this on the campaign reductions."""
+    rng = np.random.default_rng(11)
+    t = np.arange(0.0, 6.01, 0.5)
+    x = np.arange(-6.0, 6.01, 1.0)
+    G = rng.standard_normal((len(t), len(x)))
+    q0 = np.arange(-3.0, 3.001, 0.25)
+    q1 = np.arange(-2.0, 2.001, 0.5)
+    W = analysis.onesided_ft(t, x, G, q0, q1, 3.0, 6.0, 0.5, 1.0)
+    assert np.allclose(W, W[::-1, ::-1], atol=1e-12)
+    odd = 0.5 * (W - W[:, ::-1])
+    assert np.allclose(odd, -odd[::-1], atol=1e-12)
+
+    # a complex integrand breaks it: that is the information the real branch
+    # alone cannot carry
+    Gc = G + 1j * rng.standard_normal(G.shape)
+    Wc = analysis.onesided_ft(t, x, Gc, q0, q1, 3.0, 6.0, 0.5, 1.0)
+    assert np.abs(Wc - Wc[::-1, ::-1]).max() > 0.1 * np.abs(Wc).max()
+
+
+def test_the_transform_is_periodic_in_q0_with_period_two_pi_over_dt():
+    """Only a finer sampling dt moves the fold-in edge; tapers and a longer
+    t_max do not."""
+    rng = np.random.default_rng(12)
+    dt = 0.5
+    t = np.arange(0.0, 6.01, dt)
+    x = np.arange(-4.0, 4.01, 1.0)
+    G = rng.standard_normal((len(t), len(x)))
+    q0 = np.arange(-2.0, 2.001, 0.1)
+    q1 = np.array([0.0, 1.0])
+    ft = lambda qq: analysis.onesided_ft(t, x, G, qq, q1, 3.0, 4.0, dt, 1.0)
+    assert np.allclose(ft(q0), ft(q0 + 2 * np.pi / dt), atol=1e-12)
+    assert not np.allclose(ft(q0), ft(q0 + np.pi / dt), atol=1e-6)
+
+
+def test_onesided_ft_is_the_completed_two_sided_transform():
+    """onesided_ft's 2 Re is not an extra approximation on top of
+    complete_time: it is the same object, on two conditions.  The x grid has
+    to be mirror symmetric so that G(x, -t) = [G(-x, t)]* can be formed at
+    all, and the t = 0 slice has to satisfy that identity on its own, which
+    is what makes the completed grid hermitian and the transform real.  The
+    t = 0 term is q0 independent, so a slice that violates it shows up as a
+    constant imaginary offset across the whole map."""
+    rng = np.random.default_rng(13)
+    dt = 0.5
+    t = np.arange(0.0, 5.01, dt)
+    x = np.arange(-5.0, 5.01, 1.0)       # mirror symmetric, includes 0
+    G = rng.standard_normal((len(t), len(x))) + 1j * rng.standard_normal((len(t), len(x)))
+    G[0] = 0.5 * (G[0] + np.conj(G[0][::-1]))
+    q0 = np.arange(-2.0, 2.001, 0.2)
+    q1 = np.arange(-1.5, 1.501, 0.5)
+    t_full, G_full = analysis.complete_time(analysis.CorrelatorGrid(t, x, G))
+    two = analysis.windowed_ft(t_full, x, G_full, q0, q1, 2.5, 5.0)
+    one = analysis.onesided_ft(t, x, G, q0, q1, 2.5, 5.0, dt, 1.0)
+    assert np.abs(two.imag).max() < 1e-12 * max(np.abs(two.real).max(), 1.0)
+    assert np.allclose(two.real, one, atol=1e-12)
