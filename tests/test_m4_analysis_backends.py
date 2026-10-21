@@ -169,3 +169,33 @@ def test_g_error_reweights_the_probe_one_point_term():
     # the relA point cancels less completely, so it gains less
     assert (analysis.g_error(id_a * s_N, s_N, id_a, 0.568391)[0]
             > analysis.g_error(id_a * s_N, s_N, id_a, A0)[0])
+
+
+def test_time_window_defaults_to_the_published_gaussian():
+    t = np.arange(0.0, 6.001, 0.5)
+    assert np.array_equal(analysis.time_window(t, 3.0, "gauss"),
+                          np.exp(-t ** 2 / (2 * 3.0 ** 2)))
+    assert np.array_equal(analysis.time_window(t, 0.0, "rect"), np.ones(len(t)))
+
+    # every kind starts at 1 on t = 0 and decreases, so one width knob orders
+    # them all and the t = 0 half-weight stays the caller's business
+    for kind, p in (("gauss", 3.0), ("kaiser", 3.0), ("dpss", 1.5)):
+        w = analysis.time_window(t, p, kind)
+        assert w.shape == t.shape
+        assert np.isclose(w[0], 1.0) and np.all(np.diff(w) < 0) and w[-1] > 0
+
+    # a wider window keeps more of the late slices, for every family
+    for kind, narrow, wide in (("gauss", 1.5, 4.0), ("kaiser", 6.0, 1.0), ("dpss", 3.0, 1.0)):
+        assert (analysis.time_window(t, wide, kind).sum()
+                > analysis.time_window(t, narrow, kind).sum())
+
+    # the default argument leaves onesided_ft exactly as it was
+    rng = np.random.default_rng(3)
+    x = np.linspace(-6, 6, 13)
+    G = rng.standard_normal((len(t), len(x)))
+    q0, q1 = np.linspace(-1, 5, 17), np.linspace(-2, 2, 9)
+    assert np.array_equal(analysis.onesided_ft(t, x, G, q0, q1, 3.0, 6.0, 0.5, 0.5),
+                          analysis.onesided_ft(t, x, G, q0, q1, 3.0, 6.0, 0.5, 0.5,
+                                               window="gauss"))
+    with pytest.raises(ValueError):
+        analysis.time_window(t, 1.0, "hann")

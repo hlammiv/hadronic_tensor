@@ -107,15 +107,59 @@ def window_scan(t_full, x, c_full, q0s, q1s, sigma_t, sigma_x,
     return ws[len(factors) // 2], np.ptp(ws.real, axis=0)
 
 
-def onesided_ft(times, x, G, q0, q1, sigma_t, sigma_x, dt, dx):
-    """One-sided (t >= 0) Gaussian-windowed transform, t = 0 half-weighted:
+def time_window(times, p, kind="gauss"):
+    """One-sided taper on t >= 0, before the t = 0 half-weighting.
+
+    The transform sees G only on [0, t_max], so the taper sets the
+    resolution/leakage trade in q0.  Every kind takes ONE width knob ``p``,
+    so the window systematic (a scan of p) is defined the same way for all:
+
+      gauss   w = exp(-t^2 / 2p^2), p = sigma_t.  The published choice.
+      kaiser  the t >= 0 half of a Kaiser window on the implied symmetric
+              grid, p = beta.  Higher beta, lower sidelobes, wider main lobe.
+      dpss    the same half of a Slepian sequence, p = the time-bandwidth
+              product NW: the window with the most energy inside a main lobe
+              of half-width NW/t_max, which is the concentration-optimal
+              choice rather than a shape picked by hand.
+      rect    no taper (p ignored), the maximum-resolution, maximum-leakage
+              end of the trade.
+
+    A kind other than gauss ignores nothing else about the transform: the
+    t = 0 half weight is the hermiticity completion, not part of the taper.
+    """
+    times = np.asarray(times, float)
+    n = len(times)
+    kind = str(kind).lower()
+    if kind == "gauss":
+        return np.exp(-times ** 2 / (2 * float(p) ** 2))
+    if kind == "rect":
+        return np.ones(n)
+    if n < 2:
+        return np.ones(n)
+    from scipy.signal.windows import dpss as _dpss, kaiser as _kaiser
+    full = 2 * n - 1                       # the symmetric grid t in [-t_max, t_max]
+    if kind == "kaiser":
+        return np.asarray(_kaiser(full, float(p)))[n - 1:]
+    if kind == "dpss":
+        nw = float(p)
+        if not (0 < nw < full / 2):
+            raise ValueError(f"dpss needs 0 < NW < {full / 2}, got {nw}")
+        return np.asarray(_dpss(full, nw))[n - 1:]
+    raise ValueError(f"unknown time window {kind!r} (gauss, kaiser, dpss, rect)")
+
+
+def onesided_ft(times, x, G, q0, q1, sigma_t, sigma_x, dt, dx, window="gauss"):
+    """One-sided (t >= 0) windowed transform, t = 0 half-weighted:
     W1 = 2 Re sum_{t,x} dt dx e^{i(q0 t - q1 x)} w(t) w(x) G(x, t).
 
     This is the production transform for wavepacket states (a controlled
     hermiticity completion; see main_v4 sec. HT and the 2026-07 referee
-    record).  Moved here from scripts_helpers_ridge.py unchanged."""
+    record).  Moved here from scripts_helpers_ridge.py unchanged, then given
+    a choice of time taper (`time_window`); the default reproduces it exactly.
+    The spatial taper stays Gaussian: the x range is fully sampled, so it is
+    not the leakage-limited direction."""
     times = np.asarray(times, float)
-    wt = np.exp(-times**2 / (2 * sigma_t**2)).copy()
+    wt = time_window(times, sigma_t, window).copy()
     wt[0] *= 0.5
     wx = np.exp(-np.asarray(x, float)**2 / (2 * sigma_x**2))
     et = np.exp(1j * np.outer(np.atleast_1d(q0), times))

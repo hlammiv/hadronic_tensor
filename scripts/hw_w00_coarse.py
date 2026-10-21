@@ -36,6 +36,10 @@ p = argparse.ArgumentParser(description=__doc__)
 p.add_argument("tmax", nargs="?", type=float, default=1.0)
 p.add_argument("ps_win", nargs="?", type=int, default=2)
 p.add_argument("sig_xf", nargs="?", type=float, default=2.0)
+p.add_argument("--window", default="gauss", choices=("gauss", "kaiser", "dpss", "rect"),
+               help="time taper (default gauss, the published choice)")
+p.add_argument("--sig-t-p", type=float, default=None,
+               help="width knob for --window (default: sigma_t = tmax/2 for gauss)")
 add_analysis_arguments(p, output_help="explicit output directory")
 args = p.parse_args()
 TMAX, PS_WIN = args.tmax, args.ps_win
@@ -172,7 +176,7 @@ sig_x = lat.nx / SIG_XF
 
 
 def onesided(G, msk, sig_t):
-    wt = np.exp(-times ** 2 / (2 * sig_t ** 2)).copy()
+    wt = analysis.time_window(times, sig_t, args.window).copy()
     wt[0] *= 0.5
     wx = np.exp(-x0 ** 2 / (2 * sig_x ** 2))[None, :] * msk
     et = np.exp(1j * np.outer(q0, times))
@@ -181,14 +185,14 @@ def onesided(G, msk, sig_t):
 
 
 def werr(err, msk, sig_t):
-    wt = np.exp(-times ** 2 / (2 * sig_t ** 2)).copy()
+    wt = analysis.time_window(times, sig_t, args.window).copy()
     wt[0] *= 0.5
     wx = np.exp(-x0 ** 2 / (2 * sig_x ** 2))[None, :] * msk
     var = ((wt[:, None] * wx) ** 2 * err ** 2).sum()
     return 2 * DT * DX * np.sqrt(var)        # conservative (coherent) bound
 
 
-SIG_T = max(0.45, TMAX / 2)
+SIG_T = (args.sig_t_p if args.sig_t_p is not None else max(0.45, TMAX / 2))
 W_hw = onesided(G_hw, mask, SIG_T)
 W_ref = onesided(G_ref, mask, SIG_T)         # same times, window AND mask
 W_e = werr(G_err, mask, SIG_T)

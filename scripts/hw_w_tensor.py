@@ -68,6 +68,11 @@ p.add_argument("--tmax", type=float, default=6.0)
 p.add_argument("--kap-min", type=float, default=0.05)
 p.add_argument("--beta-min", type=float, default=0.01,
                help="mask probes with |beta| below this (default 0.01)")
+p.add_argument("--window", default="gauss", choices=("gauss", "kaiser", "dpss", "rect"),
+               help="time taper (default gauss, the published choice); --sig-t-p is its width knob")
+p.add_argument("--sig-t-p", type=float, default=None,
+               help="width knob for --window: sigma_t for gauss (default t_max/2), "
+                    "beta for kaiser, NW for dpss, ignored for rect")
 p.add_argument("--ideal", default=None,
                help="ideal-grid template with {family}, for slices with no saved b_err")
 p.add_argument("--wing-surrogate", default=None,
@@ -157,11 +162,12 @@ def bcal_error(d, comp, t):
 
 
 def onesided(times, x, G, msk, sig_t):
-    return analysis.onesided_ft(times, x, np.where(msk, G, 0.0), q0, q1, sig_t, sig_x, DT, DX)
+    return analysis.onesided_ft(times, x, np.where(msk, G, 0.0), q0, q1, sig_t, sig_x, DT, DX,
+                                window=args.window)
 
 
 def werr(times, x, err, msk, sig_t):
-    wt = np.exp(-times ** 2 / (2 * sig_t ** 2)).copy()
+    wt = analysis.time_window(times, sig_t, args.window).copy()
     wt[0] *= 0.5
     wx = np.exp(-x ** 2 / (2 * sig_x ** 2))[None, :] * msk
     return 2 * DT * DX * np.sqrt(((wt[:, None] * wx) ** 2 * np.where(msk, err, 0.0) ** 2).sum())
@@ -246,7 +252,7 @@ for comp in tensor.COMPONENTS:
             Gh[i][m] -= viol * w2
             log_msg.append(f"{comp} t={t}: sum-rule violation {viol:+.4f} projected out")
     tmax = times[-1] if len(times) > 1 else 1.0
-    sig_t = max(0.45, tmax / 2)
+    sig_t = (args.sig_t_p if args.sig_t_p is not None else max(0.45, tmax / 2))
     W_hw[comp] = onesided(times, x, Gh, mask, sig_t)
     W_ref[comp] = onesided(times, x, Gr, mask, sig_t)
     W_err[comp] = werr(times, x, Ge, mask, sig_t)
@@ -268,7 +274,9 @@ for comp in tensor.COMPONENTS:
                    f"max|W| hw {np.abs(W_hw[comp]).max():.3f} ref {np.abs(W_ref[comp]).max():.3f}, "
                    f"corr(hw, ref) = {corr[comp]:.3f}")
 
-log_msg = ([f"kappa floor {args.kap_min:g}, |beta| floor {args.beta_min:g}"] + reweighted
+log_msg = ([f"kappa floor {args.kap_min:g}, |beta| floor {args.beta_min:g}, "
+            f"time window {args.window}"
+            + (f" (p = {args.sig_t_p:g})" if args.sig_t_p is not None else "")] + reweighted
            + log_msg)
 if not W_hw:
     raise SystemExit("\n".join(log_msg) + "\nNo usable components; no tensor plotted.")
