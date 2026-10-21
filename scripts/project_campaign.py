@@ -193,7 +193,7 @@ for c in tensor.COMPONENTS:
 A_win = np.array(A_win)
 tot = np.hypot(A_mc.std(), A_win.mean())
 print(f"boost asymmetry A = {A_mc.mean():.3f} +- {A_mc.std():.3f}(shot) +- {A_win.mean():.3f}(window)"
-      f"  -> {A_mc.mean()/tot:.1f} sigma (published: 0.85 +- 0.34 +- 0.20, 2.2 sigma)")
+      f"  -> {A_mc.mean()/tot:.1f} sigma (published: 0.93 +- 0.32 +- 0.20, 2.47 sigma)")
 print("NOT modelled: the packet-region state-dependent bias that limited the published forward region.")
 print("It is a systematic, not a statistical error, and measuring it is exactly what the dither pubs are for.")
 

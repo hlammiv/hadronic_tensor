@@ -58,8 +58,8 @@ PYTHONPATH=. python scripts/boost_asymmetry.py data/hw_w00_coarse_t3.npz
 
 ```
   wedge q0 in [-1, 2.5], 88 of 176 q0 rows x 25 q1 columns
-  A = 0.8493   [A = 1 -> the device reproduces the reference asymmetry in full]
-  stored errors: +- 0.3396 (shot) +- 0.2026 (window)  -> 0.3954 total, 2.1 sigma
+  A = 0.9305   [A = 1 -> the device reproduces the reference asymmetry in full]
+  stored errors: +- 0.3197 (shot) +- 0.1992 (window)  -> 0.3766 total, 2.47 sigma
   from 6 slices, t <= 3, sigma_t = 1.5
 ```
 

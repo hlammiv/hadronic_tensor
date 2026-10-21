@@ -32,7 +32,7 @@ Two errors are quoted and they do not combine into one:
   is 60% as large as the shot error.
 
 Published (ibm_kingston, t <= 3, 6 slices, sigma_t = 1.5):
-A = 0.85 +- 0.34 (shot) +- 0.20 (window), a 2.1 sigma measurement.
+A = 0.93 +- 0.32 (shot) +- 0.20 (window), a 2.47 sigma measurement.
 Extracted by scripts/hw_w00_coarse.py, stored as `A_hat`, `A_err`, `A_sys`
 in data/hw_w00_coarse_t3.npz, and reproducible with
 
