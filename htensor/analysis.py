@@ -121,3 +121,40 @@ def onesided_ft(times, x, G, q0, q1, sigma_t, sigma_x, dt, dx):
     et = np.exp(1j * np.outer(np.atleast_1d(q0), times))
     ex = np.exp(-1j * np.outer(np.asarray(x, float), np.atleast_1d(q1)))
     return 2 * np.real(dt * dx * (et @ ((wt[:, None] * wx[None, :]) * G) @ ex))
+
+
+def g_error(c_err, b_err, id_a, insert_1pt):
+    """Error on the connected integrand G when the MEASURED probe one-point
+    is the thing subtracted.
+
+    The mirror-calibrated correlator is rebuilt from the ancilla signal and
+    the probe one-point b_cal as
+
+        C_cal = anc + id_a (b_cal - id_b) + id_b (A0 - id_a) + id_a id_b,
+
+    so the integrand every consumer actually forms,
+
+        G = C_cal - b_cal A0 - G_vac = anc + (id_a - A0) b_cal + const,
+
+    depends on b_cal only through (id_a - A0).  That is the same near
+    cancellation the plain-B_v decision turned on, read the other way:
+    id_a - A0 is -0.023 at the published production point and -0.068 at relA,
+    against id_a = 1/2.  A saved C_err is the error on C_cal and carries the
+    b_cal uncertainty with weight id_a, so using it unchanged as the error on
+    G over-weights that part by id_a / (id_a - A0), a factor of 22 and 7.3
+    respectively.  This swaps the weight.
+
+    ``b_err`` is the 1-sigma error on b_cal (``b_err`` in an htq_hw slice, or
+    the wing scatter alone as a lower bound).  Pass None for a slice whose
+    one-point came from the reference rather than from the device, where
+    nothing cancels and C_err is already the right error.  The non-b_cal
+    variance is floored at zero, so a b_err that is inconsistent with C_err
+    (different merge weights, say) can never produce a negative variance.
+    """
+    c_err = np.asarray(c_err, float)
+    if b_err is None:
+        return c_err.copy()
+    b2 = np.asarray(b_err, float) ** 2
+    keep = (float(id_a) - float(np.real(insert_1pt))) ** 2
+    other = np.maximum(c_err ** 2 - float(id_a) ** 2 * b2, 0.0)
+    return np.sqrt(other + keep * b2)

@@ -135,14 +135,18 @@ def new_session_slice(t, files):
     kerr = np.where(np.abs(sx_i0) > KAP_GUARD, m["sxe"] / np.abs(sx_i0),
                     np.median(m["sxe"]) / KAP_GUARD) / np.abs(kap)
     anc_new = c_a * p["sx"] / kap
+    # b_err is the error on the probe one-point alone: the last two terms of
+    # cerr are exactly (id_a b_err)^2.  G = C_cal - b_cal A0 carries b_cal with
+    # weight (id_a - A0), not id_a, so a consumer needs the two separately
+    # (htensor.analysis.g_error).
+    b_err = np.sqrt((p["Be"] / np.abs(bet)) ** 2 + sN ** 2)
     cerr = np.sqrt((c_a / kap) ** 2 * p["sxe"] ** 2
                    + (c_a / kap) ** 2 * p["sx"] ** 2 * kerr ** 2
-                   + (id_a * p["Be"] / np.abs(bet)) ** 2
-                   + (id_a * sN) ** 2)
+                   + (id_a * b_err) ** 2)
     C_cal = rebuild_C(anc_new, b_calf)
     C_raw = rebuild_C(c_a * p["sx"], p["B"])
     return dict(C_cal=C_cal, C_raw=C_raw, C_err=cerr, kap=kap, bet=bet,
-                b_cal=b_calf, N=p["N"])
+                b_cal=b_calf, b_err=b_err, N=p["N"])
 
 for t, path in TIER3.items():
     if path is None:                       # t=1.5: forward-campaign only
@@ -161,7 +165,8 @@ for t, path in TIER3.items():
                  C_cal=(s["C_cal"] + 0j)[None, :],
                  C_err=s["C_err"][None, :],
                  kappa_v=s["kap"][None, :], beta_v=s["bet"][None, :],
-                 b_cal=s["b_cal"][None, :], id_a=id_a, c_a=c_a,
+                 b_cal=s["b_cal"][None, :], b_err=s["b_err"][None, :],
+                 id_a=id_a, c_a=c_a,
                  id_b=id_b, tier=3, backend="ibm_kingston",
                  nshot=s["N"], nshot_per_obs=s["N"],
                  merged_jobs=np.array(T15JOBS))
@@ -222,6 +227,13 @@ for t, path in TIER3.items():
         wb = 1.0 / np.maximum(p["Be"] ** 2 + sN ** 2, 1e-12)
         wb3 = 1.0 / np.maximum((e3 / (2 * id_a)) ** 2 + s3 ** 2, 1e-12)
         b_out = (wb * b_calf + wb3 * b3f) / (wb + wb3)
+        # error of the combination actually formed above, from each input's own
+        # b_cal variance (the weights omit the 1/beta^2 the variances carry,
+        # which costs optimality but not correctness, so propagate the weights
+        # as used rather than the weights as they should have been)
+        v_new = (p["Be"] / np.abs(bet)) ** 2 + sN ** 2
+        v_t3 = (e3 / (2 * id_a)) ** 2 + s3 ** 2
+        b_err_out = np.sqrt(wb ** 2 * v_new + wb3 ** 2 * v_t3) / (wb + wb3)
         kap_out = 0.5 * (kap + kap3)
         bet_out = 0.5 * (bet + bet3)
         nshot = int(d3["nshot"]) + 2 * 70_000
@@ -229,6 +241,7 @@ for t, path in TIER3.items():
     else:
         chi2 = np.nan
         C_out, e_out, b_out = C3f, e3f, b3f
+        b_err_out = np.sqrt((e3 / (2 * id_a)) ** 2 + s3 ** 2)
         e_out_im = e3f
         kap_out, bet_out = kap3, bet3
         nshot, jobs = int(d3["nshot"]), list(d3["merged_jobs"])
@@ -245,6 +258,7 @@ for t, path in TIER3.items():
     out["C_err"] = e_out[None, :]
     out["C_err_im"] = e_out_im[None, :]
     out["b_cal"] = b_out[None, :]
+    out["b_err"] = b_err_out[None, :]
     out["kappa_v"] = kap_out[None, :]
     out["beta_v"] = bet_out[None, :]
     out["nshot"] = nshot
@@ -276,7 +290,8 @@ for t, outp in RZZ_OUT.items():
              C_cal=(s["C_cal"] + 0j)[None, :],
              C_err=s["C_err"][None, :],
              kappa_v=s["kap"][None, :], beta_v=s["bet"][None, :],
-             b_cal=s["b_cal"][None, :], id_a=id_a, c_a=c_a,
+             b_cal=s["b_cal"][None, :], b_err=s["b_err"][None, :],
+             id_a=id_a, c_a=c_a,
              id_b=id_b, tier=3, backend="ibm_kingston",
              nshot=s["N"], nshot_per_obs=s["N"],
              merged_jobs=np.array(

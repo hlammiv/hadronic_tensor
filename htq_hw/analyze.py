@@ -3,7 +3,7 @@ correlator slices.
 
 Estimators follow the reference implementation htensor/readout.py (not
 imported) and the tier-3 calibration of scripts/ibm_hardware.py:346-380 and
-scripts/losch_t3_pool.py:58-146:
+scripts/losch_t3_pool.py:58-151:
 
   Z setting     : J0_v = (-1)^v/2 - z_v/2, xJ0_v = x_anc J0_v,
                   Gauss syndromes G_n = (-1)^n z_n x_{l-} x_{l+}
@@ -242,22 +242,35 @@ def beta_from_mirror(B_m, b_i0):
     return np.where(ok, (B_m - 0.5) / np.where(ok, b_i0 - 0.5, 1.0), 1.0)
 
 
-def wing_anchor(b_cal, b_ideal, center: int):
-    """Per-parity wing-residual subtraction + scatter systematic
-    (scripts/losch_t3_pool.py:58-67)."""
+def wing_scatter(b_cal, b_ideal, center: int):
+    """Per-parity wing residual and its scatter -> (delta, s_N), each (ns,)
+    broadcast over every site of its parity.
+
+    s_N is what is left uncertain about the anchor after delta is subtracted.
+    It is assigned identically to all sites of a parity, so it moves the
+    charge sum rule sum_x G coherently rather than in quadrature, and a single
+    miscalibrated wing site (a dead qubit reading beta ~ 0) inflates it for
+    the whole parity class.
+    """
     ns = len(b_cal)
     idx = np.arange(ns)
     wing = np.abs(idx - center) >= WING_MIN
-    out, syst = b_cal.copy(), np.zeros(ns)
+    delta, syst = np.zeros(ns), np.zeros(ns)
     for par in (0, 1):
         s = wing & (idx % 2 == par)
-        allp = idx % 2 == par
         if s.sum() == 0:
             continue
-        delta = np.mean(b_cal[s] - b_ideal[s])
-        out[allp] -= delta
-        syst[allp] = np.std(b_cal[s] - b_ideal[s]) / np.sqrt(s.sum())
-    return out, syst
+        res = np.real(np.asarray(b_cal)[s] - np.asarray(b_ideal)[s])
+        delta[idx % 2 == par] = np.mean(res)
+        syst[idx % 2 == par] = np.std(res) / np.sqrt(s.sum())
+    return delta, syst
+
+
+def wing_anchor(b_cal, b_ideal, center: int):
+    """Per-parity wing-residual subtraction + scatter systematic
+    (scripts/losch_t3_pool.py:58-67)."""
+    delta, syst = wing_scatter(b_cal, b_ideal, center)
+    return b_cal - delta, syst
 
 
 def available_prefixes(bits_paths) -> list[str]:
@@ -327,6 +340,23 @@ def wing_target(ideal_fam, t: float, surrogate=None):
             shift = np.where(idx % 2 == 0, surrogate["even"][i], surrogate["odd"][i])
             return b0 + shift, "surrogate"
     return None, "unavailable"
+
+
+def b_err_floor(b_cal, t: float, ideal_fam, center: int, surrogate=None):
+    """Lower bound on ``b_err`` for a slice written before b_err was saved.
+
+    The wing-anchor scatter is recovered exactly from the SAVED b_cal: the
+    anchor subtracts a constant per parity, which leaves the residual's
+    scatter over that parity's wing set unchanged.  The 1/beta shot term is
+    not recoverable (Be is not saved), so this is a lower bound on b_err, and
+    feeding it to `htensor.analysis.g_error` therefore gives a conservative
+    (larger) error on G than a re-reduction from the bits would.
+    -> (s_N, source) with source in {'grid', 'surrogate'}, or (None, reason).
+    """
+    tgt, src = wing_target(ideal_fam, float(t), surrogate)
+    if tgt is None:
+        return None, src
+    return wing_scatter(np.asarray(b_cal), tgt, center)[1], src
 
 
 def rebuild_C(anc, b_cal, id_a, id_b, A0):
@@ -614,16 +644,21 @@ def component_slice(comp: str, t: float, jobs: list[JobBits], ideals: dict, lat:
            "tier": 4, "backend": backend, "nshot": int(sum(s["N"] for s in per_job)),
            "merged_jobs": np.array(list(dict.fromkeys(
                source for s in per_job for source in (s["jobs"] if "jobs" in s else [s["job"]])))),
-           "component": comp, "t": float(t),
+           "component": comp, "t": float(t), "A0": float(np.real(A0)),
            "mask": (kap < KAP_MASK)[None, :]}
     if split is not None:
         out["split_readout_jobs"] = np.array(split["jobs"])
         out["split_readout_calibration"] = "same-job mirrors; median fill per readout and Pauli term"
     if probe == "J0":
-        b_cal, _ = _merge(per_job, key="b_cal", var="bvar")
+        b_cal, b_err = _merge(per_job, key="b_cal", var="bvar")
         C_cal = rebuild_C(anc_cal, b_cal, id_a, id_b, A0)
         C_raw = rebuild_C(anc_raw, np.mean([s["B"] for s in per_job], 0), id_a, id_b, A0)
+        # b_err is the error on the probe one-point itself.  C_err carries it
+        # with weight id_a, but G = C_cal - b_cal A0 carries it with weight
+        # (id_a - A0), so a consumer needs the two separately: see
+        # htensor.analysis.g_error.
         out.update(C=(C_raw + 0j)[None, :], C_cal=(C_cal + 0j)[None, :], b_cal=(b_cal + 0j)[None, :],
+                   b_err=np.real(b_err)[None, :],
                    beta_v=np.mean([s["bet"] for s in per_job], 0)[None, :],
                    gauss=np.mean([s["gauss"] for s in per_job], 0)[None, :])
     else:
@@ -646,7 +681,8 @@ def lat_ns(job: JobBits) -> int:
 
 
 SLICE_KEYS = ("times", "probes", "C", "C_cal", "C_err", "kappa_v", "beta_v", "id_a", "c_a",
-              "id_b", "tier", "backend", "nshot", "merged_jobs", "component", "t", "dt", "raw_reference")
+              "id_b", "A0", "tier", "backend", "nshot", "merged_jobs", "component", "t", "dt",
+              "raw_reference")
 
 
 def slice_path(out_template: str, comp: str, t: float, dt: float = DT) -> str:

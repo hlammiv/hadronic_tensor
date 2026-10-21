@@ -118,9 +118,16 @@ def test_analyze_recovers_injected_kappa_and_ideal_C(setup, tmp_path):
             assert np.abs(z["C_cal"][0].real - base["C_cal"][0].real)[ref > 0.1].max() < 0.1
             continue
         if comp in ("00", "01"):
-            assert "b_cal" in z.files
+            assert "b_cal" in z.files and "b_err" in z.files
+            b_err = z["b_err"][0]
+            assert b_err.shape == (NS,) and np.all(np.isfinite(b_err)) and np.all(b_err >= 0)
+            # b_err is the probe one-point's own error and (id_a b_err)^2 is a
+            # term of C_err^2, so it can never exceed the total (one job here,
+            # so no chi2 inflation separates the two merges)
+            assert np.all((float(z["id_a"]) * b_err) ** 2 <= z["C_err"][0] ** 2 + 1e-12)
         else:
-            assert "b_cal" not in z.files
+            assert "b_cal" not in z.files and "b_err" not in z.files
+        assert np.isclose(float(z["A0"]), ideals[A.COMPONENT_LAYOUT[comp][0][0]].A0)
         kap = z["kappa_v"][0]
         if t > 0:
             expect = kappa["Z"] if comp in ("00", "01") else kappa["XYA"]
@@ -602,3 +609,41 @@ def test_calib_prefers_the_plain_pub_and_falls_back(tmp_path):
     assert both is not None and both["b_source"] == "plain"
     only = A._calib_J0(job_with(had), "j0", 0.5, grid, grid, 2, wing=False)
     assert only is not None and only["b_source"] == "marginal"      # old data still analyses
+
+
+def test_wing_scatter_survives_its_own_anchor_and_is_recoverable():
+    """b_err_floor reads the scatter back off an ANCHORED b_cal, which is what
+    lets a slice written before b_err existed be re-weighted: the anchor takes
+    out a constant per parity, so the residual's scatter is untouched."""
+    ns, center = 50, 24
+    rng = np.random.default_rng(7)
+    b_ideal = 0.5 + 0.1 * (-1.0) ** np.arange(ns)
+    b_raw = b_ideal + 0.013 * rng.standard_normal(ns)
+    b_raw[np.arange(ns) % 2 == 0] += 0.07          # a per-parity offset to remove
+    b_anc, s_N = A.wing_anchor(b_raw, b_ideal, center)
+    idx = np.arange(ns)
+    wing = np.abs(idx - center) >= A.WING_MIN
+    for par in (0, 1):                             # the offset is gone
+        m = wing & (idx % 2 == par)
+        assert abs(np.mean((b_anc - b_ideal)[m])) < 1e-12
+    assert np.allclose(A.wing_scatter(b_anc, b_ideal, center)[1], s_N)
+    # one dead wing site (beta -> 0 makes b_cal = 0.5 + (B - 0.5)/beta blow up)
+    # inflates the scatter for its whole parity class
+    b_bad = b_anc.copy()
+    b_bad[16] += 1.5
+    assert A.wing_scatter(b_bad, b_ideal, center)[1][0] > 8 * s_N[0]
+    assert np.isclose(A.wing_scatter(b_bad, b_ideal, center)[1][1], s_N[1])
+
+
+def test_b_err_floor_uses_the_grid_then_the_surrogate(setup):
+    card, lat, tpl = setup
+    g = A.load_ideal_grids(tpl, ("j0",))["j0"]
+    b_cal = g.b_ideal(0.0) + 0.01
+    sN, src = A.b_err_floor(b_cal, 0.0, g, CENTER)
+    assert src == "grid" and sN is not None and np.all(sN >= 0)
+    beyond = float(g.times[-1]) + 1.0
+    assert A.b_err_floor(b_cal, beyond, g, CENTER) == (None, "unavailable")
+    surrogate = {"times": np.array([beyond]), "even": np.array([0.02]),
+                 "odd": np.array([-0.02])}
+    sN2, src2 = A.b_err_floor(b_cal, beyond, g, CENTER, surrogate)
+    assert src2 == "surrogate" and sN2 is not None

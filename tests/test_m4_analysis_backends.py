@@ -134,3 +134,38 @@ def test_w_assembly_end_to_end_ns6():
     assert neg < 0.2 * np.abs(W.real).max()
     # window systematic is finite and was actually scanned
     assert np.all(spread >= 0) and spread.max() > 0
+
+
+def test_g_error_reweights_the_probe_one_point_term():
+    """G = C_cal - b_cal A0 sees b_cal only through (id_a - A0), so a C_err
+    used unchanged over-weights that part by id_a / (id_a - A0)."""
+    id_a, A0 = 0.5, 0.522674                     # published production point
+    swap = abs(id_a / (id_a - A0))
+    assert 21 < swap < 23
+
+    # a slice whose error is nothing but the wing-anchor scatter
+    s_N = np.full(5, 0.2525)
+    pure = analysis.g_error(id_a * s_N, s_N, id_a, A0)
+    assert np.allclose(pure, abs(id_a - A0) * s_N)
+    assert np.allclose(id_a * s_N / pure, swap)
+
+    # a slice with an additional, independent per-site term: only the b_cal
+    # part moves, the rest is carried through in quadrature
+    other = np.array([0.01, 0.02, 0.03, 0.04, 0.05])
+    c_err = np.hypot(id_a * s_N, other)
+    got = analysis.g_error(c_err, s_N, id_a, A0)
+    assert np.allclose(got, np.hypot(abs(id_a - A0) * s_N, other))
+    assert np.all(got < c_err)
+
+    # no measured one-point was subtracted -> nothing cancels
+    assert np.allclose(analysis.g_error(c_err, None, id_a, A0), c_err)
+
+    # a b_err inconsistent with C_err (different merge weights) can only ever
+    # floor the result at the term that survives, never go imaginary
+    floored = analysis.g_error(0.5 * other, 10 * s_N, id_a, A0)
+    assert np.all(np.isfinite(floored))
+    assert np.allclose(floored, abs(id_a - A0) * 10 * s_N)
+
+    # the relA point cancels less completely, so it gains less
+    assert (analysis.g_error(id_a * s_N, s_N, id_a, 0.568391)[0]
+            > analysis.g_error(id_a * s_N, s_N, id_a, A0)[0])

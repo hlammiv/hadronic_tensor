@@ -95,7 +95,7 @@ def cmd_beta():
 
 def cmd_imaginary():
     """The published reduction takes .real of both the hardware and the MPS
-    correlator (hw_w00_coarse.py:124,128), so the quoted A is apples to apples.
+    correlator (hw_w00_coarse.py:125,127), so the quoted A is apples to apples.
     What it costs on the reconstructed tensor is a separate question, and the
     exact correlator answers it without shot noise."""
     lat = Z2Lattice(NS, pbc=True)

@@ -6,7 +6,10 @@ Time slices of the connected, vacuum-subtracted integrand G(t,x):
           no kappa inversion; 30k shots)
   t=0.5 : tier-3 part a (mirror-calibrated Hadamard test, 50k shots)
   t=1.0 : tier-3 part b (150k shots)
-Vacuum piece from the MPS production run (hybrid subtraction).  One-sided
+Vacuum piece from the MPS production run (hybrid subtraction).  The measured
+probe one-point is subtracted, so its error is re-weighted from id_a to
+(id_a - A0) (htensor.analysis.g_error): G sees b_cal only through that
+difference, 0.023 here against id_a = 1/2.  One-sided
 Gaussian-windowed transform exactly as scripts/analyze_w_meson.py; the MPS
 reference is windowed IDENTICALLY (same 3 times) so the comparison is
 apples-to-apples.  delta-q0 ~ pi/t_max is coarse and labeled as such.
@@ -25,6 +28,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from htensor import Z2Lattice, analysis
+from htq_hw.analyze import wing_scatter
 from run_outputs import (check_output_prefix, output_directory, analysis_directory,
                           add_analysis_arguments, in_place)
 
@@ -43,6 +47,11 @@ out = (check_output_prefix((output_directory("kingston", args.out) if args.out
 NS, VC = 50, 24
 K0TAG = "k1.26"
 KAP_MIN = 0.05
+# |beta| floor: the probe one-point is reconstructed as 0.5 + (B - 0.5)/beta,
+# so a collapsed denominator makes both the value and its error meaningless.
+# kappa alone does not catch it (the two are measured on different pubs).
+BETA_MIN = 0.01
+IDEAL = "data/hw_t3_ideal50_k1.26.npz"
 # gauge-sector post-selection on the t=0 slice: keep only shots with
 # G_n=+1 (physical) on the PS_WIN stabilizers each side of the insertion.
 # Projects onto the gauge-invariant subspace where the screening cloud
@@ -50,6 +59,7 @@ KAP_MIN = 0.05
 # (never tuned to the MPS answer), at a shot cost.  PS_WIN=0 disables.
 lat = Z2Lattice(NS, pbc=True)
 tru = np.load(f"data/w_meson_ns50_{K0TAG}_v3.npz")
+idl = np.load(IDEAL)
 
 TIER3 = {0.5: "data/hw/job_tier3k_T05MERGED.npz",
          1.0: "data/hw/job_tier3i_T10RZZ.npz",
@@ -106,8 +116,8 @@ for t, path in sorted(TIER3.items()):
     except FileNotFoundError:
         continue
     cn = f"t{t:.1f}"
-    C, Ce = d["C_cal"][0], d["C_err"][0]
-    bet, kap = d["beta_v"][0], d["kappa_v"][0]
+    C, Ce = d["C_cal"][0], np.asarray(d["C_err"][0]).real
+    bet, kap = np.asarray(d["beta_v"][0]).real, np.asarray(d["kappa_v"][0]).real
     # per-run-calibrated merge saves b_cal directly; older single-job npzs
     # reconstruct it from the raw physics B and beta
     b_cal = (d["b_cal"][0] if "b_cal" in d.files
@@ -115,10 +125,20 @@ for t, path in sorted(TIER3.items()):
     A0 = float(tru["insert_1pt_wp"].real)
     ti = int(np.argmin(np.abs(tru["times"] - t)))
     G_hw = (C - b_cal * A0) - g_vac[ti]
-    ok = kap > KAP_MIN                       # uninvertible sites -> masked
-    rows[t] = (G_hw, Ce, ok)
-    log_msg.append(f"t={t}: tier-3, {int((~ok).sum())} sites masked, "
-                   f"median err {np.median(Ce[ok]):.4f}")
+    # b_err as saved, else the wing scatter recomputed from the saved b_cal
+    # against the same ideal target the pooler anchored to (a lower bound on
+    # b_err, hence a conservative error on G)
+    row_i = int(np.argmin(np.abs(idl["times"] - t)))
+    b_err = (np.asarray(d["b_err"][0]).real if "b_err" in d.files else
+             wing_scatter(np.asarray(b_cal).real,
+                          np.array([idl[f"B_{v}"][row_i] for v in range(NS)]), VC)[1])
+    Ce_g = analysis.g_error(Ce, b_err, float(d["id_a"]), A0)
+    ok = (kap > KAP_MIN) & (np.abs(bet) > BETA_MIN)   # uninvertible sites -> masked
+    rows[t] = (G_hw, Ce_g, ok)
+    log_msg.append(f"t={t}: tier-3, {int((~ok).sum())} sites masked "
+                   f"({int((np.abs(bet) <= BETA_MIN).sum())} on the beta floor), median err "
+                   f"{np.median(Ce[ok]):.4f} -> {np.median(Ce_g[ok]):.4f} after the b_cal "
+                   f"re-weight ({'saved b_err' if 'b_err' in d.files else 'wing scatter'})")
 
 times = np.array(sorted(rows))
 G_hw = np.array([rows[t][0] for t in times]).real

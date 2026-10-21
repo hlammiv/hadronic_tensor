@@ -49,7 +49,7 @@ Two conditions matter:
   not measure.
 
 Implementation: `htensor/asymmetry.py`. The published extraction is
-`scripts/hw_w00_coarse.py:178-200` (the `odd-q1 (boost) asymmetry` block),
+`scripts/hw_w00_coarse.py:198-220` (the `odd-q1 (boost) asymmetry` block),
 which stores `A_hat`, `A_err`, `A_sys` into `data/hw_w00_coarse_t3.npz`.
 
 ```
@@ -116,7 +116,7 @@ its support; each extra rank costs shots.
 
 Implementation: `htensor/postselect.py` (`check_ranking`, `keep_mask`,
 `acceptance`, `cloud_amplitude`). It is the canonical version of logic that
-appears inline in `scripts/hw_w00_coarse.py:46-86` (`gauss_col` and the
+appears inline in `scripts/hw_w00_coarse.py:55-95` (`gauss_col` and the
 `sel` loop) and `scripts/hw_cloud_figure.py:36-61`; `tests/test_postselect.py` asserts the
 three agree bit for bit on the released sample.
 

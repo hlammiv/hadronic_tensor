@@ -12,7 +12,14 @@ losch_t3_pool-style poolers, found by the template --slices, e.g.
 with A0 = <J^nu(0)> and <J^mu(x,t)> from b_cal when present (00, 01 with
 J0 probes) else from the MPS one-point functions (J1 probes: the term is
 <= 1e-3), and G_vac^conn from the MPS production run (hybrid subtraction).
-Sites with kappa < KAP_MIN are masked (MPS-filled in the sum rule).  The
+Where the measured b_cal is the thing subtracted, its error is re-weighted
+from id_a to (id_a - A0) (htensor.analysis.g_error): G sees the probe
+one-point only through that difference, so a saved C_err used unchanged
+over-weights the wing-anchor and 1/beta terms by id_a/(id_a - A0), 22x at
+the production point.  --ideal supplies the wing target for slices written
+before b_err was saved.  Sites with kappa < KAP_MIN or |beta| < BETA_MIN are
+masked (MPS-filled in the sum rule); the beta floor rejects probes whose
+one-point denominator has collapsed, which kappa alone does not catch.  The
 charge-conservation sum rule sum_x G = 0 applies to J0-probe components
 (00, 01) only.  One-sided windowed transform (analysis.onesided_ft), the
 MPS reference restricted to the same times, window and mask.
@@ -59,6 +66,12 @@ p.add_argument("--slices", required=True, help="template with {comp} and {t}")
 p.add_argument("--times", type=float, nargs="+", default=None, help="slice times (default 0..tmax step 0.5)")
 p.add_argument("--tmax", type=float, default=6.0)
 p.add_argument("--kap-min", type=float, default=0.05)
+p.add_argument("--beta-min", type=float, default=0.01,
+               help="mask probes with |beta| below this (default 0.01)")
+p.add_argument("--ideal", default=None,
+               help="ideal-grid template with {family}, for slices with no saved b_err")
+p.add_argument("--wing-surrogate", default=None,
+               help="wing surrogate npz, for times beyond the ideal grid")
 p.add_argument("--sig-xf", type=float, default=2.0, help="sigma_x = nx / sig_xf (hardware default 2)")
 add_analysis_arguments(p, output_help="explicit output prefix")
 p.add_argument("--label", default="hardware")
@@ -70,8 +83,8 @@ p.add_argument("--cut-q1", nargs="+", type=float, default=(0.8, 1.26, 2.3), meta
 args = p.parse_args()
 if not (np.isfinite(args.tmax) and args.tmax >= 0 and np.isfinite(args.sig_xf) and args.sig_xf > 0):
     p.error("--tmax must be nonnegative and --sig-xf positive")
-if not np.isfinite(args.kap_min):
-    p.error("--kap-min must be finite")
+if not np.isfinite(args.kap_min) or not (np.isfinite(args.beta_min) and args.beta_min >= 0):
+    p.error("--kap-min must be finite and --beta-min finite and nonnegative")
 if not (np.isfinite(args.q0_range).all() and args.q0_range[0] < args.q0_range[1]):
     p.error("--q0-range requires finite MIN < MAX")
 out = (check_output_prefix(args.out if args.out else
@@ -112,8 +125,35 @@ window_factors = (0.75, 1.0, 1.5)
 log_msg = ["Re-only hardware and MPS; hybrid MPS vacuum subtraction; no Trotter correction.",
            f"MPS dt_target={g.meta.get('dt_target', 'unrecorded')}; hardware dt read from slices."]
 W_hw, W_ref, W_err, band, corr = {}, {}, {}, {}, {}
+reweighted = []
 window_hw, window_ref, details = {}, {}, {}
 source_paths, source_dt = {}, {}
+
+
+_IDEALS, _SURR = {}, None
+if args.ideal:
+    import htq_hw.analyze as hqa                                    # noqa: E402
+    _SURR = np.load(args.wing_surrogate) if args.wing_surrogate else None
+    for fam in ("j0", "j1p1"):
+        try:
+            _IDEALS[fam] = hqa.IdealGrid(args.ideal.format(family=fam), expect_ns=NS)
+        except (FileNotFoundError, OSError):
+            pass
+    if not _IDEALS:
+        p.error(f"--ideal {args.ideal!r} matched no grid for j0 or j1p1")
+
+
+def bcal_error(d, comp, t):
+    """-> (b_err, provenance).  Saved when the reduction wrote it, else the
+    wing scatter recomputed from the saved b_cal (a lower bound on b_err, so
+    a conservative G error), else None and C_err is used unchanged."""
+    if "b_err" in d.files:
+        return np.asarray(d["b_err"])[0].real, "saved"
+    fam = "j0" if comp == "00" else "j1p1"
+    if fam not in _IDEALS:
+        return None, "unavailable"
+    sN, src = hqa.b_err_floor(np.asarray(d["b_cal"])[0], t, _IDEALS[fam], C, _SURR)
+    return (None, f"no wing target ({src})") if sN is None else (sN, f"wing scatter from {src}")
 
 
 def onesided(times, x, G, msk, sig_t):
@@ -147,12 +187,23 @@ for comp in tensor.COMPONENTS:
         Ccal = np.asarray(d["C_cal"])[0]
         Cerr = np.asarray(d["C_err"])[0].real
         kap = np.asarray(d["kappa_v"])[0].real if "kappa_v" in d.files else np.ones(NS)
-        one = np.asarray(d["b_cal"])[0] if ("b_cal" in d.files and comp in ("00", "01")) else one_mps[comp][ti]
+        bet = np.asarray(d["beta_v"])[0].real if "beta_v" in d.files else np.ones(NS)
+        used_bcal = "b_cal" in d.files and comp in ("00", "01")
+        one = np.asarray(d["b_cal"])[0] if used_bcal else one_mps[comp][ti]
         G_hw = (Ccal - one * A0[nu]) - vac_conn[comp][ti]
-        if any(np.shape(a) != (NS,) for a in (G_hw, Cerr, kap)):
+        if used_bcal:
+            b_err, how = bcal_error(d, comp, float(t))
+            if b_err is not None:
+                before = float(np.median(Cerr))
+                Cerr = analysis.g_error(Cerr, b_err, float(d["id_a"]), A0[nu])
+                reweighted.append(f"{comp} t={t:g}: b_cal error {how}, median C_err "
+                                  f"{before:.4f} -> {np.median(Cerr):.4f}")
+            else:
+                reweighted.append(f"{comp} t={t:g}: b_cal error NOT re-weighted ({how})")
+        if any(np.shape(a) != (NS,) for a in (G_hw, Cerr, kap, bet)):
             raise ValueError(f"{path}: expected {NS} probe values")
         finite = np.isfinite(G_hw) & np.isfinite(Cerr) & np.isfinite(kap) & (Cerr >= 0)
-        ok = (kap > args.kap_min) & finite
+        ok = (kap > args.kap_min) & (np.abs(bet) > args.beta_min) & finite
         if not np.isfinite(g.g[comp][ti]).all():
             raise ValueError(f"{path}: nonfinite MPS reference")
         if not ok.any():
@@ -161,7 +212,8 @@ for comp in tensor.COMPONENTS:
         rows[t] = (G_hw, Cerr, ok, kap)
         paths.append(path)
         steps.append(float(d["dt"]) if "dt" in d.files else DT)
-        log_msg.append(f"{comp} t={t}: {int((~ok).sum())} masked ({int((~finite).sum())} nonfinite/invalid), "
+        log_msg.append(f"{comp} t={t}: {int((~ok).sum())} masked ({int((~finite).sum())} nonfinite/invalid, "
+                       f"{int((np.abs(bet) <= args.beta_min).sum())} below the beta floor), "
                        f"median err {np.median(Cerr[ok]):.4f}")
     if not rows:
         log_msg.append(f"{comp}: no slices found")
@@ -216,6 +268,8 @@ for comp in tensor.COMPONENTS:
                    f"max|W| hw {np.abs(W_hw[comp]).max():.3f} ref {np.abs(W_ref[comp]).max():.3f}, "
                    f"corr(hw, ref) = {corr[comp]:.3f}")
 
+log_msg = ([f"kappa floor {args.kap_min:g}, |beta| floor {args.beta_min:g}"] + reweighted
+           + log_msg)
 if not W_hw:
     raise SystemExit("\n".join(log_msg) + "\nNo usable components; no tensor plotted.")
 
