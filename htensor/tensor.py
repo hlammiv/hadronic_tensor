@@ -196,6 +196,48 @@ def ward_residual_q(W: dict, q0, q1) -> dict:
     return out
 
 
+def ward_scale(W: dict, q0, q1, region=None) -> dict:
+    """Least-squares J1-PROBE scale from the Ward form, per insertion nu.
+
+    q0 W^{0 nu} - qhat W^{1 nu} = 0 pairs a J0-probe component with a
+    J1-probe one, so if the J1 probe carries one common multiplicative
+    calibration error the scale that best satisfies the identity,
+
+        s = <q0 W^{0 nu}, qhat W^{1 nu}> / || qhat W^{1 nu} ||^2,
+
+    measures it with no reference input.  s = 1 is a correct calibration.
+    A J1-INSERTION error multiplies both terms of the nu = 1 equation
+    equally and divides out, so this sees the probe side only.
+
+    The identity is NOT exact for the windowed one-sided transform (see
+    ward_residual_q), so the same reference pushed through the same pipeline
+    has to be fitted as a control: read s_hw against s_ref, not against 1.
+
+    -> {nu: {"s", "resid_1", "resid_s"}}, residuals normalised as in
+    ward_residual_q.  ``region`` is a boolean mask over q0.
+    """
+    q0 = np.asarray(q0, float)
+    reg = np.ones(len(q0), bool) if region is None else np.asarray(region, bool)
+    qh = qhat(q1)[None, :]
+    out = {}
+    for nu, (c0, c1) in {"0": ("00", "10"), "1": ("01", "11")}.items():
+        if c0 not in W or c1 not in W:
+            continue
+        a = (q0[:, None] * W[c0])[reg]
+        b = (qh * W[c1])[reg]
+        den = float((b ** 2).sum())
+        norm = float(np.abs(a).max()) if a.size else 0.0
+        if den <= 0 or norm <= 0:
+            out[nu] = {"s": float("nan"), "resid_1": float("nan"),
+                       "resid_s": float("nan")}
+            continue
+        s = float((a * b).sum() / den)
+        out[nu] = {"s": s,
+                   "resid_1": float(np.abs(a - b).max() / norm),
+                   "resid_s": float(np.abs(a - s * b).max() / norm)}
+    return out
+
+
 def ward_converted_W11(W00, q0, q1):
     """W^{11} implied by W^{00} through the Ward identity:
     (q0/qhat)^2 W^{00} (scripts/kubo_conductivity.py convention).  Undefined

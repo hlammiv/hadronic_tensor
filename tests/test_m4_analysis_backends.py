@@ -261,3 +261,42 @@ def test_onesided_ft_is_the_completed_two_sided_transform():
     one = analysis.onesided_ft(t, x, G, q0, q1, 2.5, 5.0, dt, 1.0)
     assert np.abs(two.imag).max() < 1e-12 * max(np.abs(two.real).max(), 1.0)
     assert np.allclose(two.real, one, atol=1e-12)
+
+
+def test_ward_scale_recovers_an_injected_J1_probe_scale():
+    """The Ward form measures a J1-PROBE calibration error with no reference
+    input, and is blind to a J1-insertion one.  Both are what makes it the
+    right diagnostic for the relA J1 overshoot: see scripts/ward_scale.py."""
+    from htensor import tensor
+
+    q0 = np.linspace(0.1, 2.5, 25)
+    q1 = np.linspace(0.3, 2.8, 9)              # no zero: qhat(0) = 0 has no lever
+    rng = np.random.default_rng(5)
+    W00 = rng.standard_normal((len(q0), len(q1)))
+    W01 = rng.standard_normal((len(q0), len(q1)))
+    qh = tensor.qhat(q1)[None, :]
+
+    for s_true in (0.46, 1.0, 1.8):
+        # build the J1-probe maps so the identity holds exactly at s_true
+        W10 = (q0[:, None] / qh) * W00 / s_true
+        W11 = (q0[:, None] / qh) * W01 / s_true
+        got = tensor.ward_scale({"00": W00, "10": W10, "01": W01, "11": W11}, q0, q1)
+        for nu in ("0", "1"):
+            assert np.isclose(got[nu]["s"], s_true, rtol=1e-10), (nu, s_true, got[nu])
+            assert got[nu]["resid_s"] < 1e-10
+            assert np.isclose(got[nu]["resid_1"], abs(1 - 1 / s_true), rtol=1e-8)
+
+        # an insertion-side error multiplies both terms of its own nu equation
+        # equally, so it divides out and s is unchanged
+        scaled = tensor.ward_scale(
+            {"00": W00, "10": W10, "01": 3.7 * W01, "11": 3.7 * W11}, q0, q1)
+        assert np.isclose(scaled["1"]["s"], s_true, rtol=1e-10)
+        assert np.isclose(scaled["0"]["s"], s_true, rtol=1e-10)
+
+    # a region mask restricts the fit, and a missing component is reported
+    # rather than guessed at
+    half = q0 <= q0[len(q0) // 2]
+    W10 = (q0[:, None] / qh) * W00 / 0.5
+    assert np.isclose(tensor.ward_scale({"00": W00, "10": W10}, q0, q1, half)["0"]["s"],
+                      0.5, rtol=1e-10)
+    assert "1" not in tensor.ward_scale({"00": W00, "10": W10}, q0, q1)
