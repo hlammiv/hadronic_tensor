@@ -57,11 +57,22 @@ PYTHONPATH=. python scripts/boost_asymmetry.py data/hw_w00_coarse_t3.npz
 ```
 
 ```
-  wedge q0 in [-1, 2.5], 88 of 176 q0 rows x 25 q1 columns
-  A = 0.9305   [A = 1 -> the device reproduces the reference asymmetry in full]
-  stored errors: +- 0.3197 (shot) +- 0.1992 (window)  -> 0.3766 total, 2.47 sigma
+  wedge q0 in [0, 2.5], 63 of 176 q0 rows x 25 q1 columns
+  A = 0.9705   [A = 1 -> the device reproduces the reference asymmetry in full]
+  stored errors: +- 0.3517 (shot) +- 0.1760 (window)  -> 0.3933 total, 2.47 sigma
   from 6 slices, t <= 3, sigma_t = 1.5
 ```
+
+The wedge starts at q0 = 0, not at -1.  The device measures the real part of
+the connected correlator, and for a real integrand the one-sided transform
+satisfies W(-q0, q1) = W(q0, -q1) identically (verified to 3e-15 on every
+campaign component by `scripts/w_map_symmetry.py`), so the odd projection is
+exactly odd in q0 and every row below zero duplicates one above, in the
+template as much as in the data.  On the published map the wider [-1, 2.5]
+wedge gives A = 0.9305 +- 0.3197 +- 0.1992, the same 2.47 sigma: the shot
+error falls with the extra rows and the window systematic rises, and the two
+cancel.  The narrow wedge is preferred because it carries no redundant bins,
+not because it is more significant.
 
 ### 1.3 The two errors, and why they are quoted separately
 

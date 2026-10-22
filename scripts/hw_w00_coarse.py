@@ -27,7 +27,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from htensor import Z2Lattice, analysis
+from htensor import Z2Lattice, analysis, asymmetry
 from htq_hw.analyze import wing_scatter
 from run_outputs import (check_output_prefix, output_directory, analysis_directory,
                           add_analysis_arguments, in_place)
@@ -200,10 +200,11 @@ band = np.ptp(np.stack([onesided(G_hw, mask, f * SIG_T)
                         for f in (0.75, 1.0, 1.5)]), axis=0)
 
 # ---- odd-q1 (boost) asymmetry: matched filter against the windowed MPS
-# template on the wedge q0 in [-1, 2.5].  The filter is linear in G_hw,
-# so the shot error propagates exactly through the FT kernel.
+# template on htensor.asymmetry.WEDGE, which is the one definition of the
+# filter region.  The filter is linear in G_hw, so the shot error
+# propagates exactly through the FT kernel.
 odd = lambda W: 0.5 * (W - W[:, ::-1])
-reg = (q0 >= -1) & (q0 <= 2.5)
+reg = asymmetry.region_mask(q0)
 T = odd(W_ref)[reg]
 den = float((T * T).sum())
 A_hat = float((T * odd(W_hw)[reg]).sum()) / den

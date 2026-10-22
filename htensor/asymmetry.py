@@ -31,8 +31,15 @@ Two errors are quoted and they do not combine into one:
   is a systematic: more shots do not shrink it, and on the published data it
   is 60% as large as the shot error.
 
-Published (ibm_kingston, t <= 3, 6 slices, sigma_t = 1.5):
-A = 0.93 +- 0.32 (shot) +- 0.20 (window), a 2.47 sigma measurement.
+A third effect is NOT an error on A and is not quoted as one.  The device
+measures only the real part of the connected correlator, so A is the
+amplitude of the **Re-projected** asymmetry; the reference goes through the
+same projection, so it cancels in the ratio, but the Re-projected asymmetry
+is 0.67 of the full one at the production point and 0.30 at relA.
+
+Published (ibm_kingston, t <= 3, 6 slices, sigma_t = 1.5, wedge q0 in
+[0, 2.5]): see data/hw_w00_coarse_t3.npz for the current A_hat, A_err and
+A_sys; the script prints them.
 Extracted by scripts/hw_w00_coarse.py, stored as `A_hat`, `A_err`, `A_sys`
 in data/hw_w00_coarse_t3.npz, and reproducible with
 
@@ -41,7 +48,14 @@ in data/hw_w00_coarse_t3.npz, and reproducible with
 
 import numpy as np
 
-WEDGE = (-1.0, 2.5)          # q^0 range of the published filter
+# q^0 range of the filter.  It starts at 0, not at -1, because for a real
+# integrand the one-sided transform satisfies W(-q0, q1) = W(q0, -q1)
+# identically, so the odd projection is exactly odd in q0 and every bin
+# below zero is the sign-flipped mirror of one above, in the template as
+# much as in the data.  Those bins are redundant rather than wrong: the old
+# [-1, 2.5] wedge gives 0.9305 on the published kingston map against 0.9705
+# here.  See scripts/w_map_symmetry.py.
+WEDGE = (0.0, 2.5)
 
 
 def odd(W) -> np.ndarray:
