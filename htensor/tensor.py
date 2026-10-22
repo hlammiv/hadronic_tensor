@@ -315,6 +315,23 @@ def ward_scale(a, b, region=None) -> dict:
             "resid_lo": float(np.abs(a - s * b).max() / norm)}
 
 
+def ward_derived_W1(times, x_site, x_bond, G0, q0, q1, sigma_t, sigma_x, dt, dx):
+    """The J1-probe map that continuity implies from a J0-probe grid.
+
+    The differential Ward form (ward_pair) reads a(G0) = qhat W1, so
+    W1 = a(G0) / qhat at every q1 != 0; the q1 = 0 column is the zero mode
+    continuity does not fix and is returned as nan.  On the reference this
+    reproduces W^{10} to 2% in the wedge (campaign note, section 13), and on
+    hardware it is a J1 map that uses no J1 probe at all, at the price of
+    amplifying the J0 map's noise by q0 / qhat at small |q1|.
+    """
+    a, _ = ward_pair(times, x_site, x_bond, G0, np.zeros((len(times), len(x_bond))),
+                     q0, q1, sigma_t, sigma_x, dt, dx, form="differential")
+    qh = qhat(q1)[None, :]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.where(np.abs(qh) > 1e-12, a / qh, np.nan)
+
+
 def ward_converted_W11(W00, q0, q1):
     """W^{11} implied by W^{00} through the Ward identity:
     (q0/qhat)^2 W^{00} (scripts/kubo_conductivity.py convention).  Undefined

@@ -26,7 +26,13 @@ Three things decide how to read the numbers:
     the matched-filter amplitude of the hardware J1 map against the
     template that continuity builds from the J0 reference.
 
-  PYTHONPATH=. python scripts/ward_scale.py <reduction.npz> [...]
+  PYTHONPATH=. python scripts/ward_scale.py [--derive] <reduction.npz> [...]
+
+--derive turns the identity around: tensor.ward_derived_W1 builds the J1
+map continuity implies from the J0 grid alone, and the report gives its
+matched-filter amplitude against the reference J1 map next to the measured
+hardware J1 map's.  At relA the derived W10 lands on the reference at
+A = 0.98 (odd part, |q1| >= 1.1) where the measured one gives 1.92.
 
 with the reduction npz written by scripts/hw_w_tensor.py, next to its
 _command.json (for the reference files).
@@ -64,7 +70,7 @@ def grids(d, g, comp):
     return times, d[f"x_{comp}"], ref, hw
 
 
-def report(path, wedge_only, forms):
+def report(path, wedge_only, forms, derive=False):
     d, g = load(path)
     q0, q1, sig_x = d["q0"], d["q1"], float(d["sig_x"])
     reg = asym.region_mask(q0) if wedge_only else np.ones(len(q0), bool)
@@ -107,6 +113,33 @@ def report(path, wedge_only, forms):
             vals.append(f"[{r['s_lo']:.2f}, {r['s_hi']:.2f}]")
         print(f"   ref / hw, {forms[0]} form, [s_lo, s_hi] over q0 thirds of "
               f"[{q0[idx[0]]:+.2f}, {q0[idx[-1]]:+.2f}]: " + "  ".join(vals))
+        if derive:
+            derived(d, c1, times, x0, x1, r0, h0, q0, q1, sig_t, sig_x, reg)
+
+
+def derived(d, c1, times, x0, x1, r0, h0, q0, q1, sig_t, sig_x, reg):
+    """The J1 map continuity implies from the J0 grid, against the reference
+    J1 map, with the measured hardware J1 map for comparison."""
+    W1_ref, W1_hw = d[f"W_ref_{c1}"], d[f"W_hw_{c1}"]
+    odd = lambda m: 0.5 * (m - m[:, ::-1])
+
+    def amp(H, R, sel):
+        Hs, Rs = H[reg][:, sel], R[reg][:, sel]
+        return float((Hs * Rs).sum() / (Rs * Rs).sum()), float(np.corrcoef(Hs.ravel(), Rs.ravel())[0, 1])
+
+    print(f"   W{c1} derived from the J0 grid through continuity, matched filter against the reference W{c1}:")
+    print(f"   {'J0 grid':<22}{'|q1| >=':>8} | {'A full':>7}{'r':>6} | {'A odd':>7}{'r':>6}")
+    for lab, G0 in (("reference (control)", r0), ("hardware (filled)", h0)):
+        W1_der = tensor.ward_derived_W1(times, x0, x1, G0, q0, q1, sig_t, sig_x, DT, DX)
+        for cut in (0.5, 1.1, 1.6):
+            sel = np.abs(q1) >= cut
+            af, rf = amp(W1_der, W1_ref, sel)
+            ao, ro = amp(odd(W1_der), odd(W1_ref), sel)
+            print(f"   {lab:<22}{cut:8.1f} | {af:7.3f}{rf:6.2f} | {ao:7.3f}{ro:6.2f}")
+    for cut in (0.5, 1.1, 1.6):
+        sel = np.abs(q1) >= cut
+        ao, ro = amp(odd(W1_hw), odd(W1_ref), sel)
+        print(f"   {'measured hardware':<22}{cut:8.1f} | {'':>7}{'':>6} | {ao:7.3f}{ro:6.2f}")
 
 
 p = argparse.ArgumentParser(description=__doc__,
@@ -114,8 +147,11 @@ p = argparse.ArgumentParser(description=__doc__,
 p.add_argument("npz", nargs="+")
 p.add_argument("--full-grid", action="store_true",
                help="fit over the whole q0 grid instead of the asymmetry wedge")
-p.add_argument("--form", default=("integral", "differential"), nargs="+",
-               choices=("integral", "differential"), help="which exact form(s) to report")
+p.add_argument("--form", default="both", choices=("integral", "differential", "both"),
+               help="which exact form(s) to report")
+p.add_argument("--derive", action="store_true",
+               help="also report the J1 map continuity derives from the J0 grid")
 args = p.parse_args()
 for path in args.npz:
-    report(path, not args.full_grid, args.form)
+    report(path, not args.full_grid,
+           ("integral", "differential") if args.form == "both" else (args.form,), args.derive)

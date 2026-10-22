@@ -348,3 +348,22 @@ def test_ward_scale_recovers_an_injected_J1_probe_scale_and_brackets_a_noisy_one
     r = tensor.ward_scale(a, noisy)
     assert 0.85 < r["s_lo"] < 0.95, r              # 1 / (1 + 0.3^2) = 0.92
     assert abs(r["s_hi"] - 1) < 0.03, r
+
+
+def test_ward_derived_W1_reproduces_the_J1_map_from_the_J0_grid():
+    """Continuity fixes the J1-probe map from the J0-probe grid at q1 != 0;
+    on continuity-exact grids the derived map matches the direct transform
+    of G1 to the differential form's O(dt^2), and the zero mode is nan."""
+    from htensor import tensor
+
+    times, xs, xb, G0, G1 = _continuity_exact_grids(seed=7)
+    q0 = np.linspace(0.0, 2.5, 26)
+    q1 = 2 * np.pi * np.arange(-5, 6) / 12
+    dt = float(times[1] - times[0])
+    W1 = analysis.onesided_ft(times, xb, G1, q0, q1, 3.0, 1e6, dt, 0.5)
+    W1_der = tensor.ward_derived_W1(times, xs, xb, G0, q0, q1, 3.0, 1e6, dt, 0.5)
+    zero = np.isclose(q1, 0.0)
+    assert np.isnan(W1_der[:, zero]).all() and np.isfinite(W1_der[:, ~zero]).all()
+    a, b = W1_der[:, ~zero], W1[:, ~zero]
+    assert abs((a * b).sum() / (b * b).sum() - 1) < 5e-3
+    assert np.abs(a - b).max() / np.abs(b).max() < 2e-2
