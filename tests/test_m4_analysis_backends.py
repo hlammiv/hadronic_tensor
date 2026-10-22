@@ -263,40 +263,88 @@ def test_onesided_ft_is_the_completed_two_sided_transform():
     assert np.allclose(two.real, one, atol=1e-12)
 
 
-def test_ward_scale_recovers_an_injected_J1_probe_scale():
-    """The Ward form measures a J1-PROBE calibration error with no reference
-    input, and is blind to a J1-insertion one.  Both are what makes it the
-    right diagnostic for the relA J1 overshoot: see scripts/ward_scale.py."""
+def _continuity_exact_grids(ns=24, dt=0.05, t_max=6.0, seed=5):
+    """Site and bond grids on a ring that satisfy the lattice continuity
+    equation exactly: G1 is a sum of modes with closed-form time integrals,
+    and G0(t) = G0(0) - int_0^t div G1."""
+    rng = np.random.default_rng(seed)
+    center = ns // 2
+    x_site = (((np.arange(ns) - center) + ns // 2) % ns - ns // 2) / 2.0
+    x_bond = x_site + 0.25
+    times = np.arange(0.0, t_max + 1e-9, dt)
+    f1, f2 = rng.standard_normal(ns), rng.standard_normal(ns)
+    w1, w2 = 1.3, 2.1
+    G1 = f1[None, :] * np.sin(w1 * times)[:, None] + f2[None, :] * (1 - np.cos(w2 * times))[:, None]
+    # int_0^t of each mode, then the divergence on sites
+    I1 = f1[None, :] * ((1 - np.cos(w1 * times)) / w1)[:, None]
+    I2 = f2[None, :] * (times - np.sin(w2 * times) / w2)[:, None]
+    flux = I1 + I2
+    div_flux = flux - np.roll(flux, 1, axis=1)
+    G0 = rng.standard_normal(ns)[None, :] - div_flux
+    return times, x_site, x_bond, G0, G1
+
+
+def test_ward_pair_is_exact_on_grids_that_satisfy_continuity():
+    """Both exact forms return a == b (s = 1) on continuity-exact grids,
+    where the naive q0 W0 = qhat W1 form does not.  The reference pushed
+    through the same forms returns 1 to 1% (campaign note, section 12),
+    and it is that control that lets the hardware's departure from 1 be
+    read as a property of the hardware."""
     from htensor import tensor
 
-    q0 = np.linspace(0.1, 2.5, 25)
-    q1 = np.linspace(0.3, 2.8, 9)              # no zero: qhat(0) = 0 has no lever
-    rng = np.random.default_rng(5)
-    W00 = rng.standard_normal((len(q0), len(q1)))
-    W01 = rng.standard_normal((len(q0), len(q1)))
-    qh = tensor.qhat(q1)[None, :]
+    times, xs, xb, G0, G1 = _continuity_exact_grids()
+    q0 = np.linspace(0.0, 2.5, 26)
+    q1 = 2 * np.pi * np.arange(-5, 6) / 12
+    dt = float(times[1] - times[0])
+    kw = dict(sigma_t=3.0, sigma_x=1e6, dt=dt, dx=0.5)
 
-    for s_true in (0.46, 1.0, 1.8):
-        # build the J1-probe maps so the identity holds exactly at s_true
-        W10 = (q0[:, None] / qh) * W00 / s_true
-        W11 = (q0[:, None] / qh) * W01 / s_true
-        got = tensor.ward_scale({"00": W00, "10": W10, "01": W01, "11": W11}, q0, q1)
-        for nu in ("0", "1"):
-            assert np.isclose(got[nu]["s"], s_true, rtol=1e-10), (nu, s_true, got[nu])
-            assert got[nu]["resid_s"] < 1e-10
-            assert np.isclose(got[nu]["resid_1"], abs(1 - 1 / s_true), rtol=1e-8)
+    a, b = tensor.ward_pair(times, xs, xb, G0, G1, q0, q1, form="integral", **kw)
+    r = tensor.ward_scale(a, b)
+    assert abs(r["s_lo"] - 1) < 1e-5 and abs(r["s_hi"] - 1) < 1e-5, r
+    assert r["resid_1"] < 1e-4, r
 
-        # an insertion-side error multiplies both terms of its own nu equation
-        # equally, so it divides out and s is unchanged
-        scaled = tensor.ward_scale(
-            {"00": W00, "10": W10, "01": 3.7 * W01, "11": 3.7 * W11}, q0, q1)
-        assert np.isclose(scaled["1"]["s"], s_true, rtol=1e-10)
-        assert np.isclose(scaled["0"]["s"], s_true, rtol=1e-10)
+    a, b = tensor.ward_pair(times, xs, xb, G0, G1, q0, q1, form="differential", **kw)
+    r = tensor.ward_scale(a, b)
+    assert abs(r["s_lo"] - 1) < 5e-3 and abs(r["s_hi"] - 1) < 5e-3, r
+    assert r["resid_1"] < 2e-2, r            # O(dt^2) summation by parts
 
-    # a region mask restricts the fit, and a missing component is reported
-    # rather than guessed at
-    half = q0 <= q0[len(q0) // 2]
-    W10 = (q0[:, None] / qh) * W00 / 0.5
-    assert np.isclose(tensor.ward_scale({"00": W00, "10": W10}, q0, q1, half)["0"]["s"],
-                      0.5, rtol=1e-10)
-    assert "1" not in tensor.ward_scale({"00": W00, "10": W10}, q0, q1)
+    # the naive form is what the boundary and window terms were missing from
+    W0 = analysis.onesided_ft(times, xs, G0, q0, q1, 3.0, 1e6, dt, 0.5)
+    W1 = analysis.onesided_ft(times, xb, G1, q0, q1, 3.0, 1e6, dt, 0.5)
+    naive = tensor.ward_scale(q0[:, None] * W0, tensor.qhat(q1)[None, :] * W1)
+    assert naive["resid_1"] > 0.3, naive
+
+
+def test_ward_scale_recovers_an_injected_J1_probe_scale_and_brackets_a_noisy_one():
+    """A J1-PROBE calibration error s is recovered exactly by both forms and
+    a region mask restricts the fit; a J1-INSERTION error (the same factor
+    on both grids of one nu) divides out.  With noise on the J1 side only,
+    s_lo is biased low and s_hi is the unbiased one, and the truth lies
+    between them."""
+    from htensor import tensor
+
+    times, xs, xb, G0, G1 = _continuity_exact_grids(seed=11)
+    q0 = np.linspace(0.0, 2.5, 26)
+    q1 = 2 * np.pi * np.arange(-5, 6) / 12
+    dt = float(times[1] - times[0])
+    kw = dict(sigma_t=3.0, sigma_x=1e6, dt=dt, dx=0.5)
+    for s_true in (0.46, 1.8):
+        for form, tol in (("integral", 1e-5), ("differential", 5e-3)):
+            a, b = tensor.ward_pair(times, xs, xb, G0, G1 / s_true, q0, q1, form=form, **kw)
+            r = tensor.ward_scale(a, b)
+            assert abs(r["s_lo"] - s_true) < tol * s_true and abs(r["s_hi"] - s_true) < tol * s_true, (form, r)
+            a2, b2 = tensor.ward_pair(times, xs, xb, 3.7 * G0, 3.7 * G1 / s_true, q0, q1,
+                                      form=form, **kw)
+            assert np.isclose(tensor.ward_scale(a2, b2)["s_lo"], r["s_lo"], rtol=1e-10)
+    half = q0 <= 1.2
+    a, b = tensor.ward_pair(times, xs, xb, G0, 2 * G1, q0, q1, **kw)
+    assert abs(tensor.ward_scale(a, b, half)["s_lo"] - 0.5) < 1e-5
+
+    # regression dilution: noise on b pulls s_lo below the truth and leaves
+    # s_hi unbiased (to the noise-signal cross term)
+    rng = np.random.default_rng(3)
+    a, b = tensor.ward_pair(times, xs, xb, G0, G1, q0, q1, **kw)
+    noisy = b + rng.standard_normal(b.shape) * 0.3 * np.sqrt((b ** 2).mean())
+    r = tensor.ward_scale(a, noisy)
+    assert 0.85 < r["s_lo"] < 0.95, r              # 1 / (1 + 0.3^2) = 0.92
+    assert abs(r["s_hi"] - 1) < 0.03, r

@@ -22,9 +22,11 @@ tests/test_m1_operators.py::test_continuity_equation):
 whose momentum-space form is q^0 W^{0 nu} = qhat W^{1 nu} with the lattice
 momentum qhat = 2 sin(q^1 / 4) (the point-split current shifts by +-1/4 of a
 spatial site).  For the finite one-sided windowed transform the q-space form
-acquires boundary (t = 0) and window-derivative terms, so the exact check is
-the pointwise integral form on the (x, t) grid (continuity_residual_xt);
-ward_residual_q reports the size of the q-space systematic.
+acquires boundary (t = 0, t_max) and window-derivative terms; ward_pair
+carries them (or avoids them altogether in its integral form) so that the
+identity is exact in q space, and ward_residual_q is the naive form kept as
+the size of that systematic.  continuity_residual_xt is the pointwise check
+on the (x, t) grid.
 """
 
 from dataclasses import dataclass
@@ -180,10 +182,12 @@ def continuity_residual_xt(grids: TensorGrids, use_raw: bool = True,
 
 
 def ward_residual_q(W: dict, q0, q1) -> dict:
-    """Momentum-space Ward form q0 W^{0 nu} - qhat W^{1 nu} per nu, normalised
-    by max|q0 W^{0 nu}| over the grid.  NOT exact for the windowed one-sided
-    transform (t = 0 boundary and window-derivative terms), reported as the
-    size of that systematic."""
+    """Naive momentum-space Ward form q0 W^{0 nu} - qhat W^{1 nu} per nu,
+    normalised by max|q0 W^{0 nu}| over the grid.  NOT exact for the windowed
+    one-sided transform: the integration by parts that turns d/dt into q0
+    leaves the t = 0 and t_max boundary terms and the window-derivative
+    term, and this form drops all three.  Kept as the size of that
+    systematic; the exact forms are ward_pair."""
     q0 = np.asarray(q0, float)[:, None]
     qh = qhat(q1)[None, :]
     out = {}
@@ -196,46 +200,119 @@ def ward_residual_q(W: dict, q0, q1) -> dict:
     return out
 
 
-def ward_scale(W: dict, q0, q1, region=None) -> dict:
-    """Least-squares J1-PROBE scale from the Ward form, per insertion nu.
+def _fx(x, G_t, q1, sigma_x, dx):
+    """Spatial half of the transform at one time: dx sum_x w(x) e^{-i q1 x} G."""
+    x = np.asarray(x, float)
+    wx = np.exp(-x ** 2 / (2 * sigma_x ** 2))
+    return dx * ((wx * np.asarray(G_t)) @ np.exp(-1j * np.outer(x, np.atleast_1d(q1))))
 
-    q0 W^{0 nu} - qhat W^{1 nu} = 0 pairs a J0-probe component with a
-    J1-probe one, so if the J1 probe carries one common multiplicative
-    calibration error the scale that best satisfies the identity,
 
-        s = <q0 W^{0 nu}, qhat W^{1 nu}> / || qhat W^{1 nu} ||^2,
+def ward_pair(times, x_site, x_bond, G0, G1, q0, q1, sigma_t, sigma_x, dt, dx,
+              form="integral"):
+    """The lattice Ward identity, exactly, for the production transform.
 
-    measures it with no reference input.  s = 1 is a correct calibration.
-    A J1-INSERTION error multiplies both terms of the nu = 1 equation
-    equally and divides out, so this sees the probe side only.
+    Returns (a, b) on the (q0, q1) grid with a == b when the J0-probe grid
+    G0 (sites) and the J1-probe grid G1 (bonds, bond v sitting at
+    x_site[v] + 1/4) satisfy the continuity equation
 
-    The identity is NOT exact for the windowed one-sided transform (see
-    ward_residual_q), so the same reference pushed through the same pipeline
-    has to be fitted as a control: read s_hw against s_ref, not against 1.
+        d/dt G0(v, t) = -[G1(v, t) - G1(v - 1, t)],
 
-    -> {nu: {"s", "resid_1", "resid_s"}}, residuals normalised as in
-    ward_residual_q.  ``region`` is a boolean mask over q0.
+    both sides pushed through analysis.onesided_ft with the same window.
+    a is built from G0 only and b from G1 only, so a multiplicative error on
+    the J1 PROBE shows up as a = s b with s != 1 (ward_scale).
+
+    form='integral' (the default, exact up to the cumulative Simpson rule):
+        a = W[G0(t) - G0(0)],  b = -W[ int_0^t div G1 dt' ].
+        No integration by parts, no window derivative, no x-window
+        mismatch between sites and bonds: the only approximation is the
+        quadrature on the t grid, which is 1% at dt = 0.25 and 15% at the
+        hardware dt = 0.5 for the relA dynamics.
+    form='differential' (the q0 W^{0 nu} = qhat W^{1 nu} form, corrected):
+        a = q0 W0 + (1/sigma_t^2) dW0/dq0 + 2 Im F_x[G0(0)]
+                  - 2 Im[ e^{i q0 T} w(T) F_x[G0(T)] ],   b = qhat W1,
+        which is the naive form plus the Gaussian window-derivative term and
+        the two time boundaries, the q0 derivative taken exactly as the
+        transform of i t G0.  What remains is the O(dt^2) error of the
+        summation by parts and the 1/4-site offset of the x window between
+        sites and bonds; the Gaussian window only.
+
+    On the unmasked MPS reference both forms return s = 1 to 1%, where the
+    naive form gives 0.94 to 1.44 (campaign note, section 12).  Hardware
+    masks must be filled before calling this: a rejected probe on the ridge
+    breaks the identity by itself (the prod card loses site 27 at t >= 2,
+    which carries the peak of G^{00}, and the masked reference returns 0.62).
     """
+    times = np.asarray(times, float)
+    x_site, x_bond = np.asarray(x_site, float), np.asarray(x_bond, float)
+    G0, G1 = np.asarray(G0), np.asarray(G1)
     q0 = np.asarray(q0, float)
-    reg = np.ones(len(q0), bool) if region is None else np.asarray(region, bool)
-    qh = qhat(q1)[None, :]
-    out = {}
-    for nu, (c0, c1) in {"0": ("00", "10"), "1": ("01", "11")}.items():
-        if c0 not in W or c1 not in W:
-            continue
-        a = (q0[:, None] * W[c0])[reg]
-        b = (qh * W[c1])[reg]
-        den = float((b ** 2).sum())
-        norm = float(np.abs(a).max()) if a.size else 0.0
-        if den <= 0 or norm <= 0:
-            out[nu] = {"s": float("nan"), "resid_1": float("nan"),
-                       "resid_s": float("nan")}
-            continue
-        s = float((a * b).sum() / den)
-        out[nu] = {"s": s,
-                   "resid_1": float(np.abs(a - b).max() / norm),
-                   "resid_s": float(np.abs(a - s * b).max() / norm)}
-    return out
+    if G0.shape != (len(times), len(x_site)) or G1.shape != (len(times), len(x_bond)):
+        raise ValueError("G0 must be (nt, n_site) and G1 (nt, n_bond)")
+    ring = len(x_site) * dx                      # ring length in spatial units
+    off = (x_bond - x_site - 0.25 + ring / 2) % ring - ring / 2
+    if not np.allclose(off, 0.0, rtol=0, atol=1e-9):
+        raise ValueError("bond v must sit at x_site[v] + 1/4 (mod the ring) for the "
+                         "lattice divergence")
+    if not np.allclose(np.diff(times), dt, rtol=0, atol=1e-9):
+        raise ValueError("the time grid must be uniform with spacing dt")
+
+    def W(x, G):
+        return analysis.onesided_ft(times, x, G, q0, q1, sigma_t, sigma_x, dt, dx)
+
+    if form == "integral":
+        from scipy.integrate import cumulative_simpson
+        div = _div_bonds(G1)
+
+        def _cs(arr):
+            return cumulative_simpson(arr, dx=dt, axis=0, initial=0.0)
+
+        flux = _cs(div.real) + 1j * _cs(div.imag) if np.iscomplexobj(div) else _cs(div)
+        return W(x_site, G0 - G0[:1]), -W(x_site, flux)
+    if form == "differential":
+        W0 = W(x_site, G0)
+        # dW0/dq0 exactly: d/dq0 of 2 Re F[G] is 2 Re F[i t G]
+        dW0 = W(x_site, 1j * times[:, None] * G0)
+        a = q0[:, None] * W0 + dW0 / sigma_t ** 2
+        a = a + 2 * np.imag(_fx(x_site, G0[0], q1, sigma_x, dx))[None, :]
+        T = times[-1]
+        wT = np.exp(-T ** 2 / (2 * sigma_t ** 2))
+        a = a - 2 * np.imag(np.exp(1j * q0 * T)[:, None] * wT
+                            * _fx(x_site, G0[-1], q1, sigma_x, dx)[None, :])
+        return a, qhat(q1)[None, :] * W(x_bond, G1)
+    raise ValueError(form)
+
+
+def ward_scale(a, b, region=None) -> dict:
+    """Least-squares J1-probe scale from a ward_pair, over a q0 region.
+
+    a = s b is the model.  With noise on b the regression of a on b,
+    s_lo = <a,b>/<b,b>, is biased LOW (regression dilution, by the noise
+    power over the signal power of b); with noise on a the reverse
+    regression s_hi = <a,a>/<a,b> is biased HIGH.  Both are returned and
+    the truth lies between them when the noise on the two sides is
+    uncorrelated.  Which side is clean decides which one to quote: the
+    reference on the J0 side and hardware on the J1 side makes s_hi the
+    unbiased estimate (it is the matched-filter amplitude of the hardware
+    J1 map against the template the J0 reference predicts for it through
+    continuity).  A J1-INSERTION error multiplies a and b of its own nu
+    equally and divides out, so the identity sees the probe side only.
+
+    -> {"s_lo", "s_hi", "resid_1", "resid_lo"}: residuals max|a - s b| over
+    max|a|, at s = 1 and at s = s_lo.  ``region`` is a boolean mask over q0.
+    """
+    a, b = np.asarray(a, float), np.asarray(b, float)
+    if region is not None:
+        reg = np.asarray(region, bool)
+        a, b = a[reg], b[reg]
+    ab, aa, bb = float((a * b).sum()), float((a * a).sum()), float((b * b).sum())
+    norm = float(np.abs(a).max()) if a.size else 0.0
+    nan = float("nan")
+    if bb <= 0 or norm <= 0 or ab == 0:
+        return {"s_lo": nan, "s_hi": nan, "resid_1": nan, "resid_lo": nan}
+    s = ab / bb
+    return {"s_lo": s, "s_hi": aa / ab,
+            "resid_1": float(np.abs(a - b).max() / norm),
+            "resid_lo": float(np.abs(a - s * b).max() / norm)}
 
 
 def ward_converted_W11(W00, q0, q1):

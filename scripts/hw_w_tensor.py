@@ -310,12 +310,31 @@ log_msg = ([f"kappa floor {args.kap_min:g}, |beta| floor {args.beta_min:g}, "
 if not W_hw:
     raise SystemExit("\n".join(log_msg) + "\nNo usable components; no tensor plotted.")
 
-# ---- Ward check across components on the assembled hardware tensor
-if all(c in W_hw for c in tensor.COMPONENTS):
-    Wd = {c: (W_hw[c], None) for c in tensor.COMPONENTS}
-    Wr = {c: (W_ref[c], None) for c in tensor.COMPONENTS}
-    log_msg.append(f"q-space Ward residual (same window): hw {tensor.ward_residual_q(Wd, q0, q1)}  "
-                   f"ref {tensor.ward_residual_q(Wr, q0, q1)}")
+# ---- Ward check across components on the assembled hardware tensor.  The
+# exact form (tensor.ward_pair) needs every site, so masked points are filled
+# from the reference for this check only; the quotable number is the mixed
+# fit, reference J0 side against hardware J1 side (scripts/ward_scale.py).
+for nu, (c0, c1) in {"0": ("00", "10"), "1": ("01", "11")}.items():
+    if c0 not in W_hw or c1 not in W_hw:
+        continue
+    t0, t1 = details[f"times_{c0}"], details[f"times_{c1}"]
+    if len(t0) != len(t1) or not np.allclose(t0, t1):
+        log_msg.append(f"Ward nu={nu}: {c0} and {c1} span different times; skipped")
+        continue
+    gr = {c: g.g[c][[int(np.argmin(np.abs(g.times - t))) for t in t0]] for c in (c0, c1)}
+    cplx = str(details[f"projection_{c0}"]).startswith("complex")
+    gr = {c: (v if cplx else np.ascontiguousarray(v.real)) for c, v in gr.items()}
+    gh = {c: np.where(details[f"mask_{c}"], details[f"G_hw_{c}"], gr[c]) for c in (c0, c1)}
+    wedge = asymmetry.region_mask(q0)
+    fits = {}
+    for lab, A, B in (("ref/ref", gr[c0], gr[c1]), ("ref/hw", gr[c0], gh[c1]),
+                      ("hw/hw", gh[c0], gh[c1])):
+        a, b = tensor.ward_pair(t0, details[f"x_{c0}"], details[f"x_{c1}"], A, B, q0, q1,
+                                details[f"sig_t_{c0}"], sig_x, DT, DX, "integral")
+        r = tensor.ward_scale(a, b, wedge)
+        fits[lab] = f"[{r['s_lo']:.3f}, {r['s_hi']:.3f}] resid {r['resid_1']:.3f}"
+    log_msg.append(f"exact Ward (integral form, wedge, masked points filled from the reference) "
+                   f"nu={nu} [s_lo, s_hi]: " + "; ".join(f"{k} {v}" for k, v in fits.items()))
 command = shlex.join([sys.executable, *sys.argv])
 projections = {}
 if args.parity:
