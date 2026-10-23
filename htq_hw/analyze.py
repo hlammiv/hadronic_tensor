@@ -12,7 +12,12 @@ scripts/losch_t3_pool.py:58-151:
                   bonds, XYB the complement; <X J1_b> = (eta/4)(<X T1_b> - <X T2_b>)
   calibration   : per probe per readout basis from the same-job mirror,
                   kappa = sx_mirror / sx_ideal(0), guard |sx_ideal(0)| > 0.02
-                  else median fill, mask kappa < 0.05; J0 probes also get
+                  else median fill, mask kappa < 0.05; EXCEPT the J1 probes
+                  that share a qubit with the insertion, whose equal-time
+                  ideal vanishes by anticommutation: they take the same-job
+                  j0 Z-mirror kappa at the insertion site, the one anchor
+                  that is blind to the prepared state (Z^2 = 1), times the
+                  probe-weight law (`prep_blind_fill`); J0 probes also get
                   beta = (B_m - 0.5)/(B_i0 - 0.5), b_cal = 0.5 + (B_p - 0.5)/beta
                   (published +0.5 anchor at every site), wing anchor per parity
                   for the 00 component; chi2-inflated inverse-variance merge
@@ -41,6 +46,13 @@ from .model import Lattice
 KAP_GUARD = 0.02
 KAP_MASK = 0.05
 WING_MIN = 6
+# Prep-blind fill for the J1 probes adjacent to the insertion (see
+# `prep_blind_fill`): relative model error on the transferred kappa, and the
+# per-unit-time rate of the probe-weight damping law kappa_w ~ kappa_1
+# exp(-WEIGHT_RATE (w - 1) t) measured on kingston (test
+# `test_kappa_never_transferred_between_probe_weights`); a J1 probe is weight 3.
+PREP_BLIND_MODEL_ERR = 0.10
+WEIGHT_RATE = 0.05
 READOUTS = ("Z", "XYA", "XYB")
 COMPONENTS = ("00", "10", "01", "11")
 # component -> (insertion families, probe kind)
@@ -523,10 +535,86 @@ def _calib_J0(job: JobBits, family: str, t: float, ideal_fam: IdealGrid, ideal_j
                 wing_applied=(wing_source in ("grid", "surrogate")), wing_source=wing_source)
 
 
+def insertion_adjacent_bonds(family: str, center: int, ns: int) -> tuple:
+    """Bonds whose J1 probe shares a qubit with the family's insertion: the
+    equal-time ideal of such a probe is exactly zero (the two Pauli strings
+    anticommute, so their product is anti-Hermitian and has no real part)."""
+    if family == "j0":
+        return ((center - 1) % ns, center)
+    if family == "j0d":
+        return (center, (center + 1) % ns)
+    if family.startswith("j1"):
+        return ((center - 1) % ns, center, (center + 1) % ns)
+    return ()
+
+
+def prep_blind_fill(kap, kerr, job: JobBits, t: float, family: str, dt: float, anc: str,
+                    ideal_j0, center: int, log=None, anchor_jobs=None):
+    """Give the insertion-adjacent J1 probes the insertion site's own J0
+    kappa instead of what the j0 mirror offers -> (kappa, kerr, bonds).
+
+    The mirror carries the j0 insertion for every family, so on the bonds
+    that share a qubit with THIS family's insertion it has no valid anchor:
+    for j0 and j1p* the bonds through the insertion site have an equal-time
+    ideal of exactly zero (median fill), and for j0d and the outer j1p* bond
+    the mirror's nonzero anchor is the j0 insertion's correlator, not this
+    insertion's.  All adjacent bonds are therefore filled, guard or no guard.
+
+    The mirror kappa of a probe O is the circuit's damping TIMES the ratio of
+    the prepared state's equal-time correlator <O P> to the ideal one, and
+    that second factor is observable-dependent: on phoenix it is 0.4 to 0.65
+    for the XY bond correlators that anchor the J1 probes, while the Z probe
+    on the insertion site, whose anchor is <Z Z> = 1 in any state, reads the
+    circuit's damping alone (0.78 against a median of 0.39).  The bond
+    current on the two bonds containing the insertion qubit has no anchor at
+    all and, at the first Trotter step, is sourced by that same Z^2 = 1 term,
+    so it is as blind to the prepared state as the site probe is.  Filling it
+    with the median of the prep-dependent bonds doubled the J1 components
+    (campaign note of 2026-10-22, sec. 14); filling it from the j0 Z mirror
+    at the insertion site, times the probe-weight law exp(-WEIGHT_RATE (3 -
+    1) t), returns them to the reference.  kerr on the filled bonds is the
+    anchor's error plus PREP_BLIND_MODEL_ERR in quadrature.  Falls back to
+    the median fill (and says so) when no j0 Z mirror at this t is available.
+
+    The anchor is taken from the job itself when it carries a j0 Z mirror,
+    else from the first of `anchor_jobs` that does (the relA packer puts the
+    Z readouts in their own group, so a split XY job never has one).  That
+    is the one place a mirror crosses a job boundary: the Z mirror's kappa
+    at the insertion site is the circuit's damping at this t, not a
+    calibration of the XY probe, and the component records which job it
+    came from.  -> (kappa, kerr, bonds, anchor_job_id)
+    """
+    bonds = list(insertion_adjacent_bonds(family, center, lat_ns(job)))
+    if not bonds:
+        return kap, kerr, [], None
+    kanc = "X" if anc == "Y" else anc
+    anchor = next((j for j in [job] + [a for a in (anchor_jobs or []) if a is not job]
+                   if j.mirror_name(t, "Z", kanc, "j0", dt) is not None), None)
+    if anchor is None:
+        _log(f"  {job.job_id}: {family} t={t:g} J1 probes on bonds {bonds}: no j0 Z mirror in any "
+             "job, prep-blind fill unavailable, median fill kept", log)
+        return kap, kerr, [], None
+    sx0 = ideal_j0.sx_ideal0("J0")
+    if not abs(sx0[center]) > KAP_GUARD:
+        return kap, kerr, [], None
+    k0, e0 = kappa_for_basis(anchor, t, "j0", dt, anc, sx0)
+    if k0 is None:
+        return kap, kerr, [], None
+    if anchor is not job:
+        _log(f"  {job.job_id}: {family} t={t:g} J1 probes on bonds {bonds}: prep-blind kappa "
+             f"{k0[center]:.3f} from job {anchor.job_id}'s j0 Z mirror", log)
+    w = np.exp(-WEIGHT_RATE * 2 * t)
+    kap, kerr = np.array(kap, float), np.array(kerr, float)
+    kap[bonds] = k0[center] * w
+    kerr[bonds] = np.hypot(e0[center], PREP_BLIND_MODEL_ERR)
+    return kap, kerr, bonds, anchor.job_id
+
+
 def _calib_J1(job: JobBits, family: str, t: float, ideal_j0: IdealGrid, anc: str = "X",
-              dt: float = DT) -> dict | None:
+              dt: float = DT, center: int | None = None, log=None, anchor_jobs=None) -> dict | None:
     """One job, one family, J1 probes (XYA + XYB readouts): calibrated
-    <X J1_b> = (eta/4)(xT1/kappa1 - xT2/kappa2), raw one-point <J1_b>."""
+    <X J1_b> = (eta/4)(xT1/kappa1 - xT2/kappa2), raw one-point <J1_b>.
+    With `center`, the insertion-adjacent bonds get the prep-blind fill."""
     names = [pub_name(family, t, False, r, anc, dt) for r in ("XYA", "XYB")]
     if not all(job.has(n) for n in names):
         return None
@@ -543,9 +631,17 @@ def _calib_J1(job: JobBits, family: str, t: float, ideal_j0: IdealGrid, anc: str
         m1, m2 = term_split(mA, mB)
     else:
         m1, m2, mnames = p1, p2, names
+    fill, anchor = [], None
     if t > 0:
-        kap1, kerr1 = kappa_from_mirror(m1["xT"], m1["xTe"], ideal_j0.sx_ideal0("J1", 1))
-        kap2, kerr2 = kappa_from_mirror(m2["xT"], m2["xTe"], ideal_j0.sx_ideal0("J1", 2))
+        i1, i2 = ideal_j0.sx_ideal0("J1", 1), ideal_j0.sx_ideal0("J1", 2)
+        kap1, kerr1 = kappa_from_mirror(m1["xT"], m1["xTe"], i1)
+        kap2, kerr2 = kappa_from_mirror(m2["xT"], m2["xTe"], i2)
+        if center is not None:
+            kap1, kerr1, f1, anchor = prep_blind_fill(kap1, kerr1, job, t, family, dt, anc, ideal_j0,
+                                                      center, log, anchor_jobs)
+            kap2, kerr2, f2, anchor = prep_blind_fill(kap2, kerr2, job, t, family, dt, anc, ideal_j0,
+                                                      center, log, anchor_jobs)
+            fill = sorted(set(f1) | set(f2))
     else:
         kap1 = kap2 = np.ones(lat_ns(job))
         kerr1 = kerr2 = np.zeros(lat_ns(job))
@@ -559,17 +655,19 @@ def _calib_J1(job: JobBits, family: str, t: float, ideal_j0: IdealGrid, anc: str
                                   + (p2["xTe"] ** 2 + p2["xT"] ** 2 * kerr2 ** 2) / kap2 ** 2)
     return dict(anc_cal=c_a * xJ1_cal, anc_raw=c_a * xJ1_raw, var=var, var_anc=var,
                 kap=np.minimum(kap1, kap2), kap1=kap1, kap2=kap2, one=one, one_e=one_e,
-                N=min(p1["N"], p2["N"]), mirror=mnames)
+                N=min(p1["N"], p2["N"]), mirror=mnames, fill=fill, fill_anchor=anchor)
 
 
 def _calib_J1_setting(job: JobBits, family: str, t: float, setting: str,
                       ideal_j0: IdealGrid, anc: str = "X", dt: float = DT,
-                      log=None) -> dict | None:
+                      log=None, center: int | None = None, anchor_jobs=None) -> dict | None:
     """Signed contribution of one XY setting, calibrated in its source job.
 
     For split jobs the guarded median fill stays within this setting and
     Pauli term: borrowing the other job's mirror would mix calibrations.
-    Complete jobs retain the existing per-term fill in `_calib_J1`.
+    Complete jobs retain the existing per-term fill in `_calib_J1`.  The
+    prep-blind fill (`prep_blind_fill`) applies here too, from this job's
+    own j0 Z mirror, when `center` is given.
     """
     pname = pub_name(family, t, False, setting, anc, dt)
     if not job.has(pname):
@@ -580,21 +678,27 @@ def _calib_J1_setting(job: JobBits, family: str, t: float, setting: str,
         return None
     p, m = job.est(pname, setting), job.est(mname, setting)
     kap, kerr = np.ones(lat_ns(job)), np.zeros(lat_ns(job))
+    fill, anchor = [], None
     if t > 0:
         for term in (1, 2):
             take = p["term"] == term
             kap[take], kerr[take] = kappa_from_mirror(
                 m["xT"][take], m["xT_err"][take], ideal_j0.sx_ideal0("J1", term)[take])
+        if center is not None:
+            kap, kerr, fill, anchor = prep_blind_fill(kap, kerr, job, t, family, dt, anc, ideal_j0,
+                                                      center, log, anchor_jobs)
     sign = np.where(p["term"] == 1, 1.0, -1.0)
     c_a = FAMILY_COEFF[family] * (job.eta if family.startswith("j1") else 1.0)
     coeff = c_a * job.eta / 4 * sign
     var = coeff ** 2 * (p["xT_err"] ** 2 + p["xT"] ** 2 * kerr ** 2) / kap ** 2
     return dict(anc_cal=coeff * p["xT"] / kap, anc_raw=coeff * p["xT"],
-                var=var, kap=kap, one=job.eta / 4 * sign * p["T"], N=p["N"])
+                var=var, kap=kap, one=job.eta / 4 * sign * p["T"], N=p["N"], fill=fill,
+                fill_anchor=anchor)
 
 
 def _split_J1_slab(jobs: list[JobBits], fams, t: float, ideal_j0: IdealGrid,
-                   anc: str = "X", dt: float = DT, log=None) -> dict | None:
+                   anc: str = "X", dt: float = DT, log=None,
+                   center: int | None = None, anchor_jobs=None) -> dict | None:
     """Merge each split setting once, then add the independent settings.
 
     Only jobs not already used as a complete component may enter here.
@@ -607,7 +711,7 @@ def _split_J1_slab(jobs: list[JobBits], fams, t: float, ideal_j0: IdealGrid,
         slabs = []
         for job in jobs:
             have_physics |= any(job.has(pub_name(fam, t, False, setting, anc, dt)) for fam in fams)
-            parts = [_calib_J1_setting(job, fam, t, setting, ideal_j0, anc, dt, log)
+            parts = [_calib_J1_setting(job, fam, t, setting, ideal_j0, anc, dt, log, center, anchor_jobs)
                      for fam in fams]
             if any(p is None for p in parts):
                 continue
@@ -616,6 +720,8 @@ def _split_J1_slab(jobs: list[JobBits], fams, t: float, ideal_j0: IdealGrid,
                 anc_raw=sum(p["anc_raw"] for p in parts),
                 var=sum(p["var"] for p in parts),
                 one=np.mean([p["one"] for p in parts], axis=0),
+                fill=sorted({b for p in parts for b in p["fill"]}),
+                fill_anchor=sorted({p["fill_anchor"] for p in parts if p["fill_anchor"]}),
                 family_kaps={f: p["kap"] for f, p in zip(fams, parts)},
                 family_shots={f: p["N"] for f, p in zip(fams, parts)}, job=job.job_id))
         by_setting[setting] = slabs
@@ -645,7 +751,9 @@ def _split_J1_slab(jobs: list[JobBits], fams, t: float, ideal_j0: IdealGrid,
                 kap1=np.mean(kap1, axis=0), kap2=np.mean(kap2, axis=0),
                 kap=np.mean(np.minimum(kap1, kap2), axis=0),
                 N=sum(min(a["family_shots"][f], b["family_shots"][f]) for f in fams),
-                jobs=sources)
+                jobs=sources,
+                fill=sorted({b for slabs in by_setting.values() for s in slabs for b in s["fill"]}),
+                fill_anchor=sorted({a for slabs in by_setting.values() for s in slabs for a in s["fill_anchor"]}))
 
 
 # ------------------------------------------------------------------ slices
@@ -688,7 +796,7 @@ def component_slice(comp: str, t: float, jobs: list[JobBits], ideals: dict, lat:
         for fam in fams:
             r = (_calib_J0(job, fam, t, ideals[fam], ideal_j0, center, anc, wing, dt,
                            surrogate=surrogate, log=log) if probe == "J0"
-                 else _calib_J1(job, fam, t, ideal_j0, anc, dt))
+                 else _calib_J1(job, fam, t, ideal_j0, anc, dt, center, log, jobs))
             if r is None:
                 parts = []
                 break
@@ -696,6 +804,8 @@ def component_slice(comp: str, t: float, jobs: list[JobBits], ideals: dict, lat:
         if not parts:
             continue
         slab = {"anc_cal": sum(p["anc_cal"] for p in parts),
+                "fill": sorted({b for p in parts for b in p.get("fill", [])}),
+                "fill_anchor": sorted({p["fill_anchor"] for p in parts if p.get("fill_anchor")}),
                 "anc_raw": sum(p["anc_raw"] for p in parts),
                 "var": sum(p["var"] for p in parts),
                 "kap": np.mean([p["kap"] for p in parts], 0),
@@ -716,7 +826,7 @@ def component_slice(comp: str, t: float, jobs: list[JobBits], ideals: dict, lat:
             for fam in fams:
                 r = (_calib_J0(job, fam, t, ideals[fam], ideal_j0, center, "Y", wing, dt,
                                surrogate=surrogate, log=log) if probe == "J0"
-                     else _calib_J1(job, fam, t, ideal_j0, "Y", dt))
+                     else _calib_J1(job, fam, t, ideal_j0, "Y", dt, center, log, jobs))
                 if r is None:
                     iparts = []
                     break
@@ -735,7 +845,7 @@ def component_slice(comp: str, t: float, jobs: list[JobBits], ideals: dict, lat:
     split = None
     if probe == "J1":
         split = _split_J1_slab([job for job in jobs if id(job) not in complete_jobs],
-                               fams, t, ideal_j0, anc, dt, log)
+                               fams, t, ideal_j0, anc, dt, log, center, jobs)
         if split is not None:
             per_job.append(split)
             _log(f"  {comp} t={t:g}, dt={dt:g}: combined separately calibrated XY readouts "
@@ -772,6 +882,13 @@ def component_slice(comp: str, t: float, jobs: list[JobBits], ideals: dict, lat:
     if split is not None:
         out["split_readout_jobs"] = np.array(split["jobs"])
         out["split_readout_calibration"] = "same-job mirrors; median fill per readout and Pauli term"
+    if probe == "J1" and t > 0:
+        filled = sorted({b for s in per_job for b in s.get("fill", [])})
+        anchors = sorted({a for s in per_job for a in s.get("fill_anchor", [])})
+        out["kappa_fill"] = (f"prep-blind: J1 probes on bonds {filled} take the j0 Z-mirror kappa at "
+                             f"site {center} (jobs {anchors}) times exp(-{WEIGHT_RATE} * 2 * t), model "
+                             f"error {PREP_BLIND_MODEL_ERR}; guard failures elsewhere median-filled"
+                             if filled else "median fill per readout and Pauli term")
     if probe == "J0":
         b_cal, b_err = _merge(per_job, key="b_cal", var="bvar")
         C_cal = rebuild_C(anc_cal, b_cal, id_a, id_b, A0)

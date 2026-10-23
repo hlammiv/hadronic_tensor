@@ -9,17 +9,22 @@ is the forward damping the mirror is supposed to measure.  The ideal grids
 match the MPS reference to a few percent at t > 0, so a departure from 1 is
 the hardware's.
 
-What this found on phoenix (campaign note, section 13): the J0 probes
-calibrate to 0.9 to 1.0 at early t; the J1 probes come out 1.4 to 2.5 times
-the ideal at t <= 1 on every card, at dt = 0.5 and at the dt = 0.25 control
-alike (so it is not Trotter error), with a raw forward damping of 0.73 at
-t = 0.5 where the mirror says kappa = 0.39 and the t = 0 pub reads 0.42.
-At t = 0.5 the excess sits on the bonds that contain the insertion qubit
-and moves with the insertion (the j0d family); by t >= 1 it has spread over
-the active bonds.  The eps-angle mirror cannot see it, because it carries
-no dynamics to propagate anything from the insertion.
+What this found on phoenix (campaign note, sections 13 and 14): the J0
+probes calibrate to 0.9 to 1.0 at early t; the J1 probes came out 1.4 to 2.5
+times the ideal at t <= 1 on every card, at dt = 0.5 and at the dt = 0.25
+control alike, with the excess on the bonds that contain the insertion qubit.
+The cause was the kappa fill on those bonds: their equal-time ideal is zero
+by anticommutation, the median fill carried the prepared state's reduced XY
+correlations (0.39), and the first-step current there is prep-blind (sourced
+by Z^2 = 1) and damped only by the circuit (0.78, the J0 kappa at the
+insertion site).  `htq_hw.analyze.prep_blind_fill` is the fix; --run points
+this script at a slice set reduced with it.  The 01 / 11 rows compare the
+two-family hardware signal with the two-family ideal (an earlier version
+used one family and reported 2.7 / 2.3 at t = 0.5; the right numbers are
+1.3 / 1.2).
 
   PYTHONPATH=. python scripts/j1_probe_stages.py prod relA [--tmax 6]
+      [--run data/hw/runs/phoenix/2026-10-06/analysis/2026-10-22_prepblind_kappa/slices]
 """
 
 import argparse
@@ -34,9 +39,9 @@ from htq_hw import analyze as hqa  # noqa: E402
 RUN = "data/hw/runs/phoenix/2026-10-06/analysis"
 CARDS = {"prod": "prod_k1.26_s0.75_ns50", "relA": "relA_k1.26_s0.75_ns50"}
 # comp -> (family, probe, insertion label)
-LAYOUT = {"00": ("j0", "J0", "site 24"), "10": ("j0", "J1", "site 24"),
-          "00d": ("j0d", "J0", "site 25"), "10d": ("j0d", "J1", "site 25"),
-          "01": ("j1p1", "J0", "bond 24"), "11": ("j1p1", "J1", "bond 24")}
+# comp -> insertion label; families and probe kind come from hqa.COMPONENT_LAYOUT
+INSERTION = {"00": "site 24", "10": "site 24", "00d": "site 25", "10d": "site 25",
+             "01": "bond 24", "11": "bond 24"}
 
 
 def mf(h, i):
@@ -44,47 +49,58 @@ def mf(h, i):
     return float((h * i).sum() / (i * i).sum()), float(np.corrcoef(h, i)[0, 1])
 
 
-def signals(d, ideal, comp, t, eta):
+def signals(d, ideals, comp, t, eta):
     """-> (raw, cal, ideal) connected ancilla signals on the probes, or raw
-    None for J0 probes (their raw rebuild needs the wing anchor)."""
-    fam, probe, _ = LAYOUT[comp]
-    c_a = hqa.FAMILY_COEFF[fam] * (eta if fam.startswith("j1") else 1.0)
+    None for J0 probes (their raw rebuild needs the wing anchor).
+
+    `ideals` maps family -> IdealGrid.  The ideal is summed over the
+    component's insertion families exactly as `component_slice` sums the
+    hardware parts: the J1 insertion is two families (j1p1 + j1p2), and
+    comparing their summed hardware signal with one family's ideal is off by
+    about 2 (which is what the first version of this script did)."""
+    fams, probe = hqa.COMPONENT_LAYOUT[comp]
+    first = ideals[fams[0]]
     C, Cc = d["C"][0].real, d["C_cal"][0].real
-    id_a, A0 = ideal.id_a, ideal.A0           # the family's own, as component_slice uses
+    id_a, A0 = first.id_a, first.A0           # the first family's, as component_slice uses
+
+    def c_a(fam):
+        return hqa.FAMILY_COEFF[fam] * (eta if fam.startswith("j1") else 1.0)
     if probe == "J1":
         one = d["one_pt"][0]
-        idl = c_a * eta / 4 * (ideal.s_ideal("X", t, "J1", 1) - ideal.s_ideal("X", t, "J1", 2))
+        idl = sum(c_a(f) * eta / 4 * (ideals[f].s_ideal("X", t, "J1", 1) - ideals[f].s_ideal("X", t, "J1", 2))
+                  for f in fams)
         return C - id_a * one, Cc - id_a * one, idl
-    b, idb = d["b_cal"][0].real, ideal.id_b()
+    b, idb = d["b_cal"][0].real, first.id_b()
     cal = Cc - id_a * (b - idb) - idb * (A0 - id_a) - id_a * idb     # rebuild_C inverted
-    return None, cal, c_a * ideal.s_ideal("X", t, "J0")
+    return None, cal, sum(c_a(f) * ideals[f].s_ideal("X", t, "J0") for f in fams)
 
 
-def card_report(card, tmax, tag):
+def card_report(card, tmax, tag, run):
     sub = CARDS[card]
-    D = f"{RUN}/{sub}/"
+    D = f"{run}/{sub}/"
     ideals = {}
-    for fam in ("j0", "j0d", "j1p1"):
+    for fam in ("j0", "j0d", "j1p1", "j1p2"):
         path = f"htq_hw/cards/{sub}/ideal_{fam}.npz"
         if os.path.exists(path):
             ideals[fam] = hqa.IdealGrid(path)
     eta = float(ideals["j0"].z["eta"])
-    print(f"\n=== {card}  eta {eta}{'  ' + tag if tag else ''}   "
-          f"(amplitude = <hw, ideal>/<ideal, ideal> over probes, r = correlation)")
-    for comp, (fam, probe, ins) in LAYOUT.items():
-        if fam not in ideals or not os.path.exists(D + f"slice_{comp}_t0.5{tag}.npz"):
+    print(f"\n=== {card}  eta {eta}{'  ' + tag if tag else ''}   slices {D}\n"
+          f"    (amplitude = <hw, ideal>/<ideal, ideal> over probes, r = correlation)")
+    for comp, ins in INSERTION.items():
+        fams, probe = hqa.COMPONENT_LAYOUT[comp]
+        if any(f not in ideals for f in fams) or not os.path.exists(D + f"slice_{comp}_t0.5{tag}.npz"):
             continue
-        ideal = ideals[fam]
+        ideal = ideals[fams[0]]
         times = [t for t in np.arange(0.5, tmax + 1e-9, 0.5)
                  if ideal.has_row(t) and os.path.exists(D + f"slice_{comp}_t{t:.1f}{tag}.npz")]
-        print(f" {comp}: {probe} probes, insertion {ins}, family {fam}")
+        print(f" {comp}: {probe} probes, insertion {ins}, families {'+'.join(fams)}")
         print(f"   {'t':>4} | {'raw/ideal':>9} {'r':>5} | {'kappa':>6} | {'cal/ideal':>9} {'r':>5} | "
               f"per bond (|ideal| > 25% of max)" if probe == "J1" else
               f"   {'t':>4} | {'kappa':>6} | {'cal/ideal':>9} {'r':>5}")
         num, den = np.zeros(50), np.zeros(50)
         for t in times:
             d = np.load(D + f"slice_{comp}_t{t:.1f}{tag}.npz", allow_pickle=True)
-            raw, cal, idl = signals(d, ideal, comp, t, eta)
+            raw, cal, idl = signals(d, ideals, comp, t, eta)
             kap = d["kappa_v"][0]
             ok = np.isfinite(cal) & (kap > hqa.KAP_MASK)
             a_cal, r_cal = mf(cal[ok], idl[ok])
@@ -110,6 +126,9 @@ p.add_argument("cards", nargs="*", default=list(CARDS), choices=list(CARDS))
 p.add_argument("--tmax", type=float, default=6.0)
 p.add_argument("--dt-control", action="store_true",
                help="read the dt = 0.25 control slices instead (t = 0.5 and 1.0)")
+p.add_argument("--run", default=RUN,
+               help="directory holding <card>/slice_*.npz (default: the campaign's; point it at a "
+                    "post-processed set such as .../2026-10-22_prepblind_kappa/slices)")
 args = p.parse_args()
 for card in args.cards:
-    card_report(card, args.tmax, "_dt0.25" if args.dt_control else "")
+    card_report(card, args.tmax, "_dt0.25" if args.dt_control else "", args.run)

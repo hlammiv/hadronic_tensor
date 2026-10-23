@@ -176,7 +176,11 @@ def test_kappa_never_transferred_between_probe_weights(setup, tmp_path):
     calibration must therefore take each probe's kappa from the mirror's OWN
     probe of that weight: J0 probes from the Z-readout mirror, T1/T2 probes
     from the XY-readout mirrors.  Injecting different damping per readout and
-    recovering both proves no J0 kappa leaks onto J1 probes."""
+    recovering both proves no J0 kappa leaks onto J1 probes, with ONE
+    deliberate exception: the J1 probes on the bonds containing the
+    insertion qubit have no XY anchor (their equal-time ideal is zero) and
+    take the Z-mirror kappa at the insertion site times the weight law
+    (`prep_blind_fill`), which the slice records."""
     card, lat, tpl = setup
     eta = card["couplings"]["eta"]
     specs = CP.manifest(times=TIMES)
@@ -201,6 +205,14 @@ def test_kappa_never_transferred_between_probe_weights(setup, tmp_path):
         got = kap[strong].mean()
         assert abs(got - expect) < 0.05, (comp, got, expect)
         assert abs(got - wrong) > 0.15, (comp, got, wrong)     # the other weight's kappa is NOT used
+        if comp in ("10", "11"):
+            fam = A.COMPONENT_LAYOUT[comp][0][0]
+            adjacent = list(A.insertion_adjacent_bonds(fam, CENTER, NS))
+            assert str(adjacent) in str(z["kappa_fill"]), z["kappa_fill"]
+            w = np.exp(-A.WEIGHT_RATE * 2 * 0.5)
+            assert np.all(np.abs(kap[adjacent] - kappa["Z"] * w) < 0.05), (comp, kap[adjacent])
+        elif comp == "00":
+            assert "kappa_fill" not in z.files
 
 
 def test_grouped_rela_campaign_retains_split_xy_slices(setup, tmp_path):
@@ -764,3 +776,91 @@ def test_no_im_forces_the_real_part_only_even_with_Y_pubs_present(setup, tmp_pat
     z = np.load(written[("00", TIMES[0])], allow_pickle=True)
     assert "C_err_im" not in z.files
     assert np.abs(z["C_cal"][0].imag).max() == 0.0
+
+
+def test_prep_blind_fill_takes_the_insertion_sites_kappa_on_the_adjacent_bonds():
+    """The J1 probes on the bonds containing the insertion qubit have an
+    equal-time ideal of exactly zero (anticommutation), so the mirror cannot
+    anchor them.  The median of the other bonds carries the prepared state's
+    reduced XY correlations (phoenix: 0.39 against a circuit damping of
+    0.78), which the first-step current on those bonds, sourced by Z^2 = 1,
+    does not; the fill therefore takes the j0 Z-mirror kappa at the insertion
+    site, times the probe-weight law, and says so.  Without a Z mirror the
+    median fill stays, and says so too."""
+    from htq_hw import campaign as CP
+
+    class Ideal:
+        ns, id_a, A0 = NS, 0.5, 0.3
+
+        def id_b(self):
+            return (-1.0) ** np.arange(NS) / 2
+
+        def sx_ideal0(self, probe, term=None):
+            if probe == "J0":
+                r = np.full(NS, 0.1)
+                r[CENTER] = -0.5
+                return r
+            r = np.full(NS, 0.4 if term == 1 else -0.3)
+            r[[CENTER - 1, CENTER]] = 0.0
+            return r
+
+    ideal, t, k_far, k0 = Ideal(), 0.5, 0.3, 0.8
+    w = np.exp(-A.WEIGHT_RATE * 2 * t)
+    adjacent = [CENTER - 1, CENTER]
+    damp = np.full(NS, k_far)
+    damp[adjacent] = k0 * w                      # the prep-blind bonds damp like the site probe
+    s1, s2 = 0.10, -0.06                         # true term signals on every bond
+
+    def make_job(job_id, with_z_mirror):
+        job = A.JobBits({}, Lattice(NS), job_id, eta=1.3)
+
+        def put(name, **est):
+            job.bits[name] = np.zeros((100, job.lat.n_wires), np.uint8)
+            job._cache[name] = est
+        if with_z_mirror:
+            put(CP.pub_name("j0", t, True, "Z"), sx=k0 * ideal.sx_ideal0("J0"), sxe=np.full(NS, 0.004),
+                N=100, setting="Z")
+        for setting in ("XYA", "XYB"):
+            term = np.array([A.j1_term_in_setting(b, setting) for b in range(NS)])
+            truth = np.where(term == 1, s1, s2)
+            ref = np.where(term == 1, ideal.sx_ideal0("J1", 1), ideal.sx_ideal0("J1", 2))
+            common = dict(term=term, T=np.zeros(NS), T_err=np.full(NS, 0.01), N=100, setting=setting,
+                          xT_err=np.full(NS, 0.004), xa=0.0, xa_err=0.01)
+            put(CP.pub_name("j0", t, False, setting), xT=damp * truth, sx=damp * truth,
+                sxe=np.full(NS, 0.004), **common)
+            put(CP.pub_name("j0", t, True, setting), xT=k_far * ref, sx=k_far * ref,
+                sxe=np.full(NS, 0.004), **common)
+        return job
+
+    coeff = A.FAMILY_COEFF["j0"] * 1.3 / 4
+    r = A._calib_J1(make_job("anchored", True), "j0", t, ideal, "X", A.DT, CENTER)
+    assert r["fill"] == adjacent
+    far = np.ones(NS, bool)
+    far[adjacent] = False
+    np.testing.assert_allclose(r["kap1"][adjacent], k0 * w)
+    np.testing.assert_allclose(r["kap2"][adjacent], k0 * w)
+    np.testing.assert_allclose(r["kap1"][far], k_far)
+    np.testing.assert_allclose(r["anc_cal"], coeff * (s1 - s2))          # recovered on EVERY bond
+    e0 = 0.004 / 0.5 / k0
+    np.testing.assert_allclose(r["var"][adjacent] / coeff ** 2,
+                               ((0.004 ** 2 + (k0 * w * s1) ** 2 * (e0 ** 2 + A.PREP_BLIND_MODEL_ERR ** 2))
+                                + (0.004 ** 2 + (k0 * w * s2) ** 2 * (e0 ** 2 + A.PREP_BLIND_MODEL_ERR ** 2)))
+                               / (k0 * w) ** 2)
+    # the split-readout path fills the same bonds from the same anchor
+    rs = A._calib_J1_setting(make_job("anchored", True), "j0", t, "XYA", ideal, "X", A.DT, None, CENTER)
+    assert rs["fill"] == adjacent
+    np.testing.assert_allclose(rs["kap"][adjacent], k0 * w)
+    np.testing.assert_allclose(rs["kap"][far], k_far)
+    # a split XY job carries no Z mirror: the anchor is borrowed from a job that does, and named
+    rb = A._calib_J1(make_job("xy-only", False), "j0", t, ideal, "X", A.DT, CENTER,
+                     anchor_jobs=[make_job("z-group", True)])
+    assert rb["fill"] == adjacent and rb["fill_anchor"] == "z-group"
+    np.testing.assert_allclose(rb["kap1"][adjacent], k0 * w)
+    # no Z mirror anywhere: the median fill stays, and the adjacent bonds come out 2.7x too large
+    r0 = A._calib_J1(make_job("unanchored", False), "j0", t, ideal, "X", A.DT, CENTER)
+    assert r0["fill"] == [] and r0["fill_anchor"] is None
+    np.testing.assert_allclose(r0["kap1"][adjacent], k_far)
+    np.testing.assert_allclose(r0["anc_cal"][adjacent] / (coeff * (s1 - s2)), k0 * w / k_far)
+    # and without a center nothing changes at all (old callers)
+    rn = A._calib_J1(make_job("anchored", True), "j0", t, ideal, "X", A.DT)
+    np.testing.assert_allclose(rn["kap1"], r0["kap1"])
