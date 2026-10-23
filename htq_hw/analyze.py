@@ -505,6 +505,17 @@ def _calib_J0(job: JobBits, family: str, t: float, ideal_fam: IdealGrid, ideal_j
         kap, kerr = kappa_for_basis(job, t, family, dt, anc, sx_i0)
         if kap is None:
             return None
+        if family == "j0d":
+            # The dither inserts at center+1, and the Z probe on its own
+            # insertion site is prep-blind (Z^2 = 1) exactly like the j0
+            # insertion site's; but the shared j0 mirror reads a prep-DEPENDENT
+            # equal-time correlator at center+1 (0.6 to 0.7 of the prep-blind
+            # one on phoenix), which over-corrected that probe by 1/f.  Same
+            # weight, so the j0 insertion site's kappa transfers with no
+            # weight law (note sec. 15b).
+            site = (center + 1) % lat_ns(job)
+            kap, kerr = kap.copy(), kerr.copy()
+            kap[site], kerr[site] = kap[center], np.hypot(kerr[center], PREP_BLIND_MODEL_ERR)
         bet = beta_from_mirror(bmir["B"], b_anchor)
     else:   # t = 0 references are reported raw (kappa = beta = 1)
         kap, kerr, bet = np.ones(lat_ns(job)), np.zeros(lat_ns(job)), np.ones(lat_ns(job))

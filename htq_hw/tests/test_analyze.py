@@ -864,3 +864,56 @@ def test_prep_blind_fill_takes_the_insertion_sites_kappa_on_the_adjacent_bonds()
     # and without a center nothing changes at all (old callers)
     rn = A._calib_J1(make_job("anchored", True), "j0", t, ideal, "X", A.DT)
     np.testing.assert_allclose(rn["kap1"], r0["kap1"])
+
+
+def test_dither_insertion_site_takes_the_j0_insertion_sites_kappa():
+    """The dither family j0d inserts at CENTER+1 and shares the j0 mirror.
+    The Z probe on its own insertion site is prep-blind (Z^2 = 1), but the j0
+    mirror reads a prep-dependent correlator there, so that probe takes the
+    j0 insertion site's kappa (same weight, no weight law); the j0 family
+    itself is untouched (campaign note sec. 15b)."""
+    from htq_hw import campaign as CP
+
+    class Ideal:
+        ns, A0 = NS, 0.3
+
+        def __init__(self, id_a):
+            self.id_a = id_a
+
+        def id_b(self):
+            return (-1.0) ** np.arange(NS) / 2
+
+        def sx_ideal0(self, probe, term=None):
+            return np.full(NS, -0.2)
+
+        def b_ideal(self, t):
+            return np.full(NS, 0.2)
+
+        def b_plain(self, t):
+            return None
+
+    t, site = 0.5, CENTER + 1
+    kap_true = np.full(NS, 0.6)
+    kap_true[CENTER], kap_true[site] = 0.8, 0.5
+    ideal_j0, ideal_j0d = Ideal(0.5), Ideal(-0.5)
+    job = A.JobBits({}, Lattice(NS), "d", eta=1.3)
+
+    def put(name, **est):
+        job.bits[name] = np.zeros((100, job.lat.n_wires), np.uint8)
+        job._cache[name] = est
+    common = dict(sxe=np.full(NS, 0.004), B=np.full(NS, 0.2), Be=np.full(NS, 0.01), N=100,
+                  gauss=np.zeros(NS), xa=0.0)
+    put(CP.pub_name("j0", t, True, "Z"), sx=kap_true * ideal_j0.sx_ideal0("J0"), **common)
+    for fam in ("j0", "j0d"):
+        put(CP.pub_name(fam, t, False, "Z"), sx=np.full(NS, 0.1), **common)
+
+    r0 = A._calib_J0(job, "j0", t, ideal_j0, ideal_j0, CENTER, wing=False)
+    np.testing.assert_allclose(r0["kap"], kap_true)
+    rd = A._calib_J0(job, "j0d", t, ideal_j0d, ideal_j0, CENTER, wing=False)
+    want = kap_true.copy()
+    want[site] = kap_true[CENTER]
+    np.testing.assert_allclose(rd["kap"], want)
+    np.testing.assert_allclose(rd["anc_cal"][site], -0.5 * 0.1 / kap_true[CENTER])
+    assert rd["var"][site] > r0["var"][site] * (kap_true[site] / kap_true[CENTER]) ** 2   # model error added
+    others = np.arange(NS) != site
+    np.testing.assert_allclose(rd["anc_cal"][others], r0["anc_cal"][others])
