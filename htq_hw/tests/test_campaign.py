@@ -64,6 +64,36 @@ def test_im_only_manifest_rides_the_x_mirrors_with_the_y_physics():
     assert len(CP.preset_specs("relA-im")) == 9 + 12 * 21
 
 
+def test_quarter_time_slices_are_full_steps_plus_a_tail():
+    """Off the dt grid a slice is n full steps and one tail step, named by its
+    exact time; nothing on the grid changes its name, steps or group."""
+    assert CP.steps_for(5.75) == (11, 0.25) and CP.steps_for(6.0) == (12, 0.0) and CP.steps_for(0.25) == (0, 0.25)
+    assert CP.steps_for(1.0, 0.25) == (4, 0.0)
+    assert f"{CP.QuarterTime(5.75):.1f}" == "5.75" and f"{CP.QuarterTime(6.0):.1f}" == "6.0"
+    assert f"{CP.QuarterTime(0.5):.2f}" == "0.50" and f"{CP.QuarterTime(0.25):g}" == "0.25"
+    specs = CP.manifest(times=(0.5,), quarter_times=(0.25, 5.75))
+    names = {s.name for s in specs}
+    assert {"j0_t0.25_Z", "j0_m5.75_XYA", "j1p2_t5.75_XYB", "j0_t0.5_Z", "j0_t0.0_Z"} <= names
+    q = {s.name: s for s in specs if s.tail}
+    assert len(q) == 2 * 12 and q["j0_t0.25_Z"].n_steps == 0 and q["j0_t5.75_Z"].n_steps == 11
+    assert q["j0_t5.75_Z"].dt == CP.DT and q["j0_t5.75_Z"].tail == 0.25
+    assert all(s.tail == 0.0 for s in specs if s.name not in q)
+    assert CP.parse_pub_name("j0_t5.75_Z") == {"family": "j0", "t": 5.75, "mirror": False, "readout": "Z",
+                                               "anc_basis": "X", "dt": CP.DT, "prefix": ""}
+    assert all(s.tail == 0.0 for s in CP.manifest(dt_half=True))
+    with pytest.raises(ValueError):
+        CP.manifest(quarter_times=(0.5,))
+    by = {s.name: s for s in specs}
+    for job in CP.group_jobs(specs, max_pubs=8)[1:]:
+        for n in job:
+            s = by[n]
+            if not s.mirror:
+                assert CP.pub_name("j0", s.t, True, s.readout, s.anc_basis) in job
+    assert len(CP.preset_specs("prod-quarter")) == 3 + 12 * 6
+    assert len(CP.preset_specs("relA-quarter")) == 9 + 12 * 15
+    assert {s.t for s in CP.preset_specs("prod-quarter") if s.t > 0} == set(CP.QUARTER_TIMES)
+
+
 def test_group_jobs_pairing():
     specs = CP.manifest()
     jobs = CP.group_jobs(specs, max_pubs=8)

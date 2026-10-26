@@ -93,6 +93,45 @@ def test_check_end_to_end_ns6(grids6, target):
     assert {k[1] for k in res} >= {"base", "physics t=0.5", "mirror t=1.0"}
 
 
+def test_check_quarter_time_tail_blocks_ns6(tmp_path):
+    """ISA tail blocks (n full steps + a half step, composed from the ladder's
+    layout-preserving step) reproduce the ideal grids at quarter times."""
+    card = C.load_card()
+    lat = Lattice(6)
+    tpl = os.path.join(str(tmp_path), "ideal6q_{family}.npz")
+    S.write_ideal_grids(card, 6, 2, ("j0",), [0.0, 0.25, 0.75], tpl, threads=2)
+    be = T.resolve_backend("grid:4x5")
+    emb = T.choose_embedding(be, 6, 2)
+    res = S.check(be, lat, card, emb, tpl, [0.0, 0.25, 0.75], families=("j0",), threads=2, tol=5e-3, log=None)
+    assert max(res.values()) < 5e-3
+    assert {k[1] for k in res} >= {"physics t=0.25", "mirror t=0.75"}
+    specs = CP.manifest(times=(), quarter_times=(0.25,), families=("j0",))
+    shots = {s.name: 800 for s in specs}
+    out = S.rehearse(be, lat, card, emb, specs, shots, tpl, str(tmp_path / "reh"), threads=2, log=None)
+    assert ("00", 0.25) in out["slices"] and out["slices"][("00", 0.25)].endswith("t0.25.npz")
+    z = np.load(out["slices"][("00", 0.25)], allow_pickle=True)
+    assert float(z["t"]) == 0.25 and float(z["dt"]) == CP.DT and abs(z["kappa_v"][0][2] - 1.0) < 0.1
+
+
+def test_append_ideal_rows_keeps_existing_rows(grids6, tmp_path):
+    """Quarter-time rows are added to a card's grid without touching its own."""
+    import shutil
+    card, tpl = grids6
+    dst = str(tmp_path / "merged_j0.npz")
+    shutil.copy(tpl.format(family="j0"), dst)
+    qtpl = os.path.join(str(tmp_path), "q_{family}.npz")
+    S.write_ideal_grids(card, 6, 2, ("j0",), [0.0, 0.25], qtpl, threads=2)
+    r = S.append_ideal_rows(dst, qtpl.format(family="j0"))
+    assert r["added"] == [0.25] and r["overlap_max_diff"] < 1e-9
+    g, g0 = A.IdealGrid(dst), A.IdealGrid(tpl.format(family="j0"))
+    assert g.times.tolist() == [0.0, 0.25, 0.5, 1.0] and g.has_row(0.25)
+    for t in (0.0, 0.5, 1.0):
+        assert np.array_equal(g.vec("XB", t), g0.vec("XB", t)) and g.scalar("X", t) == g0.scalar("X", t)
+    assert np.array_equal(g.vec("XB", 0.25), A.IdealGrid(qtpl.format(family="j0")).vec("XB", 0.25))
+    with pytest.raises(ValueError):
+        S.append_ideal_rows(dst, tpl.format(family="j1p1"))
+
+
 def test_check_detects_layout_bug(grids6):
     card, tpl = grids6
     lat = Lattice(6)

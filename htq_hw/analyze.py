@@ -39,7 +39,7 @@ import os
 import numpy as np
 
 from . import DT, ETA
-from .campaign import parse_pub_name, pub_name, split_prefix
+from .campaign import QuarterTime, parse_pub_name, pub_name, split_prefix
 from . import circuits as C
 from .model import Lattice
 
@@ -1010,8 +1010,9 @@ SLICE_KEYS_IM = ("C_err_im", "anc_phase", "im_jobs")
 
 
 def slice_path(out_template: str, comp: str, t: float, dt: float = DT) -> str:
-    """slice_{comp}_t{T}.npz, or slice_{comp}_t{T}_dt0.25.npz for the control."""
-    path = out_template.format(comp=comp, t=t)
+    """slice_{comp}_t{T}.npz, or slice_{comp}_t{T}_dt0.25.npz for the control;
+    a quarter time formats exactly (t5.75) however the template rounds."""
+    path = out_template.format(comp=comp, t=QuarterTime(t))
     if abs(dt - DT) > 1e-9:
         root, ext = os.path.splitext(path)
         path = f"{root}_dt{dt:g}{ext}"

@@ -56,6 +56,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from paper_style import OI, OI_DIV, dev  # noqa: E402
 from htensor import analysis, asymmetry, tensor  # noqa: E402
+from htq_hw.campaign import QuarterTime  # noqa: E402
 from run_outputs import (check_output_prefix, analysis_directory,  # noqa: E402
                           add_analysis_arguments, in_place)
 
@@ -185,7 +186,7 @@ for comp in tensor.COMPONENTS:
     rows = {}
     paths, steps = [], []
     for t in slice_times:
-        path = args.slices.format(comp=comp, t=t)
+        path = args.slices.format(comp=comp, t=QuarterTime(t))
         if not os.path.exists(path):
             continue
         d = np.load(path, allow_pickle=True)

@@ -42,7 +42,7 @@ from htensor import Z2Lattice, stateprep, trotter
 from htensor import currents as cur
 
 DT = 0.5
-TIMES = [round(0.5 * i, 2) for i in range(0, 17)]      # 0 .. 8
+TIMES = [round(0.25 * i, 2) for i in range(0, 33)]     # 0 .. 8 by 0.25: the dt grid and the quarter times
 
 
 def breathing(m0, g2, eta, thetas, link_ref="+", ns=8, times=TIMES, dt=DT):
@@ -60,7 +60,7 @@ def breathing(m0, g2, eta, thetas, link_ref="+", ns=8, times=TIMES, dt=DT):
     for t in times:
         qc = prep.copy()
         if t > 0:
-            qc.compose(trotter.trotter_circuit(lat, m0, g2, eta, t, int(round(t / dt))), inplace=True)
+            qc.compose(trotter.hardware_trotter_circuit(lat, m0, g2, eta, t, dt), inplace=True)
         sv = Statevector(qc)
         b = np.array([sv.expectation_value(o).real for o in ops])
         if base is None:

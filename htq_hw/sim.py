@@ -331,19 +331,19 @@ def one_point_grid(card: dict, ns: int, center: int, times, dt: float = DT, cap:
     one_obs["ins_j1"] = _with_anc(lat, current_terms(lat, center, eta, exact_seam=True), "I")
     out = {"J0": np.empty((len(times), ns)), "J1": np.empty((len(times), ns)), "H": Hval}
     for i, t in enumerate(times):
-        n = int(round(t / dt))
+        n = t > 1e-9                       # evolved at all (a tail-only quarter slice counts)
         qc = QuantumCircuit(lat.n_wires)
         if not big:
             qc.compose(prep_state_circuit(card, lat, center), inplace=True)
         if n:
-            qc.compose(C.trotter_block(lat, n, t, *C.card_couplings(card)), range(lat.n_qubits), inplace=True)
+            qc.compose(C.hardware_block(lat, t, dt, *C.card_couplings(card)), range(lat.n_qubits), inplace=True)
         t0 = time.time()
         d = expectations(sim, qc, one_obs, init, noise_t, perm)
         out["J0"][i] = [d[f"J0_{v}"] for v in range(ns)]
         out["J1"][i] = [d[f"J1_{v}"] for v in range(ns)]
         if i == 0:
             out["ins_j0"], out["ins_j1"] = d["ins_j0"], d["ins_j1"]
-        T._log(f"one-point t={t:3.1f}: <J0({center})> = {out['J0'][i, center]:+.5f}  ({time.time() - t0:.0f}s)", log)
+        T._log(f"one-point t={CP.QuarterTime(t):3.1f}: <J0({center})> = {out['J0'][i, center]:+.5f}  ({time.time() - t0:.0f}s)", log)
     return out
 
 
@@ -388,23 +388,23 @@ def ideal_grid(card: dict, ns: int, center: int, family: str, times, dt: float =
     rows = {k: [] for k in obs}
     mrows = {f"m_{k}": [] for k in obs}
     for i, t in enumerate(times):
-        n = int(round(t / dt))
+        n = t > 1e-9                       # evolved at all (a tail-only quarter slice counts)
         t0 = time.time()
         qa = tail(t)
         qa.h(lat.ancilla)
         qa.compose(C.insertion_gadget(lat, kind, gc, "direct"), inplace=True)
         if n:
-            qa.compose(C.trotter_block(lat, n, t, *C.card_couplings(card)), range(lat.n_qubits), inplace=True)
+            qa.compose(C.hardware_block(lat, t, dt, *C.card_couplings(card)), range(lat.n_qubits), inplace=True)
         d = expectations(sim, qa, obs, init, noise, perm)
         for k in obs:
             rows[k].append(d[k])
-        msg = f"{family} t={t:3.1f}: <XB_{center}> = {rows[f'XB_{center}'][-1]:+.5f}  ({time.time() - t0:.0f}s)"
+        msg = f"{family} t={CP.QuarterTime(t):3.1f}: <XB_{center}> = {rows[f'XB_{center}'][-1]:+.5f}  ({time.time() - t0:.0f}s)"
         if mirror:
             qm = tail(t)
             qm.h(lat.ancilla)
             qm.compose(C.insertion_gadget(lat, kind, gc, "direct"), inplace=True)
             if n:
-                qm.compose(C.trotter_block(lat, n, MIRROR_EPS, *C.card_couplings(card)), range(lat.n_qubits), inplace=True)
+                qm.compose(C.hardware_block(lat, t, dt, *C.card_couplings(card), eps=MIRROR_EPS), range(lat.n_qubits), inplace=True)
             dm = expectations(sim, qm, obs, init, noise, perm)
             for k in obs:
                 mrows[f"m_{k}"].append(dm[k])
@@ -434,6 +434,50 @@ def write_ideal_grids(card, ns, center, families, times, out_template, **kw) -> 
         np.savez(path, **g)
         paths[fam] = path
     return paths
+
+
+IDEAL_META_KEYS = frozenset(("times", "probes", "bonds", "noise", "id_a", "c_a", "H_prep", "insert_1pt",
+                             "family", "insert", "m0", "g2", "eta", "ns", "center", "block_center", "dt",
+                             "k0", "sigma_x", "state", "cap_evol", "trunc"))
+
+
+def append_ideal_rows(path: str, new_path: str, tol: float = 2e-3) -> dict:
+    """Add the time rows of the grid at ``new_path`` to the grid at ``path``
+    (the rows at times it lacks), keeping every existing row and the file's
+    own metadata.  The two must describe the same state (couplings, centre,
+    insertion, family, id_a, c_a; insert_1pt and H_prep to ``tol``) and any
+    overlapping rows must agree to ``tol``: the package's `ideal_grid` and
+    scripts/hw_cal_grids.py differ by about 1e-4.  Written for the quarter
+    times (0.25, 0.75, ...), which a card installed on the dt grid lacks.
+    -> {'added': [t, ...], 'overlap_max_diff': float, 'times': [...]}"""
+    old = dict(np.load(path, allow_pickle=True))
+    new = dict(np.load(new_path, allow_pickle=True))
+    t_old, t_new = np.asarray(old["times"], float), np.asarray(new["times"], float)
+    for k in ("ns", "center", "insert", "family", "m0", "g2", "eta", "dt", "id_a", "c_a"):
+        if k in old and k in new and str(old[k]) != str(new[k]):
+            raise ValueError(f"{new_path} is not a grid of the same state as {path}: {k} {new[k]} vs {old[k]}")
+    for k in ("insert_1pt", "H_prep"):
+        if k in old and k in new and abs(float(np.real(old[k])) - float(np.real(new[k]))) > tol:
+            raise ValueError(f"{new_path}: {k} {float(np.real(new[k])):.6f} differs from {path}'s "
+                             f"{float(np.real(old[k])):.6f} by more than {tol}")
+    timed = [k for k, a in old.items() if k not in IDEAL_META_KEYS and np.ndim(a) >= 1 and a.shape[0] == len(t_old)]
+    for k in timed:
+        if k not in new or np.shape(new[k])[0] != len(t_new) or np.shape(new[k])[1:] != np.shape(old[k])[1:]:
+            raise ValueError(f"{new_path}: key {k} missing or shaped differently from {path}")
+    add = [i for i, t in enumerate(t_new) if np.abs(t_old - t).min() > 1e-6]
+    overlap = [(i, int(np.argmin(np.abs(t_old - t)))) for i, t in enumerate(t_new) if np.abs(t_old - t).min() <= 1e-6]
+    maxdiff = max((float(np.abs(np.asarray(new[k][i]) - np.asarray(old[k][j])).max()) for k in timed for i, j in overlap),
+                  default=0.0)
+    if maxdiff > tol:
+        raise ValueError(f"{new_path}: overlapping rows differ from {path} by {maxdiff:.2e} > {tol}")
+    times = np.concatenate([t_old, t_new[add]])
+    order = np.argsort(times)
+    out = dict(old)
+    out["times"] = times[order]
+    for k in timed:
+        out[k] = np.concatenate([np.asarray(old[k]), np.asarray(new[k])[add]])[order]
+    np.savez(path, **out)
+    return {"added": t_new[add].tolist(), "overlap_max_diff": maxdiff, "times": out["times"].tolist()}
 
 
 # ------------------------------------------------------------------ check
@@ -488,14 +532,15 @@ def check(be, lat: Lattice, card, emb: T.Embedding, ideal_template: str, times,
     obs = probe_observables(lat, ("J0", "J1"), eta)
     ps = prep_mps(card, lat, emb.center, cache_dir, cap, threads=threads, log=log) if big else None
     init, perm = (ps.mps, ps.perm) if big else (None, None)
-    steps = tuple(sorted({int(round(t / DT)) for t in times if t > 0}))
+    steps = tuple(sorted({CP.steps_for(t)[0] for t in times if t > 0 and not CP.steps_for(t)[1]}))
+    tails = tuple(sorted({CP.steps_for(t) for t in times if t > 0 and CP.steps_for(t)[1]}))
     results, worst = {}, 0.0
     for fam in families:
         ideal = A.IdealGrid(A._fmt(ideal_template, fam, card.get("name") if card else None),
                             expect_ns=lat.ns)
         kind, off = CP.FAMILY_GADGET[fam]
         b = T.transpile_bundle(be, lat, card, emb, steps, basis, kind, seed, cache_dir, log=log,
-                               gadget_center=emb.center + off if off else None)
+                               gadget_center=emb.center + off if off else None, tails=tails)
         # base from |0>
         base_rel, wire = relabel_to_logical(b.base, emb.layout if emb.layout else b.base.layout.initial_index_layout(), lat.n_wires)
         fw = final_wires(range(lat.n_wires), b.base_layout, wire)
@@ -511,8 +556,8 @@ def check(be, lat: Lattice, card, emb: T.Embedding, ideal_template: str, times,
         for t in times:
             if t == 0:
                 continue
-            n = int(round(t / DT))
-            blk = b.blocks[n]
+            n, tail = CP.steps_for(t)
+            blk = b.blocks[(n, tail) if tail else n]
             for label, circ, t_ref in (("physics", blk["physics"], t), ("mirror", blk["mirror"], 0.0)):
                 if label == "mirror" and not mirrors:
                     continue
@@ -523,7 +568,7 @@ def check(be, lat: Lattice, card, emb: T.Embedding, ideal_template: str, times,
                 fw = final_wires(range(lat.n_wires), blk["layout"], wire)
                 mapped = {k: remap(op, fw, rel.num_qubits) for k, op in obs.items()}
                 d = expectations(sim, full, mapped, init, perm=perm)
-                results[(fam, f"{label} t={t:.1f}")] = _compare(d, ideal, t_ref, log, f"{fam} {label} t={t:.1f}")
+                results[(fam, f"{label} t={CP.QuarterTime(t):.1f}")] = _compare(d, ideal, t_ref, log, f"{fam} {label} t={CP.QuarterTime(t):.1f}")
         worst = max(worst, max(v for (f, _), v in results.items() if f == fam))
     bad = {k: v for k, v in results.items() if v > tol}
     if bad:
@@ -656,12 +701,13 @@ def rehearse(be, lat: Lattice, card, emb: T.Embedding, specs, shots: dict, ideal
             if qpdf:
                 body = C.readout_layer(QuantumCircuit(be.num_qubits), lat, base_layout,
                                        C.qpdf_readout_map(lat, emb.center, s.readout), "Z")
-            elif n == 0:
+            elif n == 0 and not s.tail:
                 body = C.readout_layer(QuantumCircuit(be.num_qubits), lat, base_layout, s.readout, s.anc_basis)
             else:
-                blk = bnd.blocks[n]["mirror" if s.mirror else "physics"] if s.dt == DT else \
+                key = (n, s.tail) if s.tail else n
+                blk = bnd.blocks[key]["mirror" if s.mirror else "physics"] if (s.dt == DT or s.tail) else \
                     T.assign_block(bnd, n, n * s.dt)[1 if s.mirror else 0]
-                body = C.readout_layer(blk, lat, bnd.blocks[n]["layout"], s.readout, s.anc_basis)
+                body = C.readout_layer(blk, lat, bnd.blocks[key]["layout"], s.readout, s.anc_basis)
             rel = relabel_pub(body, base_layout, lat.n_wires)
             mps_f, perm_f = init_by_fam[(cname, fam)]
             arr = sample_bits(sim, rel, shots[s.name], mps_f, noise_t,

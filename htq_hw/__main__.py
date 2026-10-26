@@ -197,6 +197,25 @@ def cmd_ideal(args):
     paths = S.write_ideal_grids(card, args.ns, center, fams, times, _ideal_template(args), mirror=args.mirror,
                                 cap=args.cap, trunc=args.trunc, threads=args.threads, cache_dir=args.cache, log=log)
     print(paths)
+    if args.append_to:
+        import datetime
+        for fam in fams:
+            target = args.append_to.format(family=fam)
+            r = S.append_ideal_rows(target, paths[fam])
+            print(f"{target}: added rows at {r['added']} (overlap max |diff| {r['overlap_max_diff']:.2e}); "
+                  f"times now {r['times']}")
+            prov = os.path.join(os.path.dirname(target), "grids_provenance.json")
+            if os.path.exists(prov):
+                with open(prov) as f:
+                    pj = json.load(f)
+                entry = pj.setdefault("families", {}).setdefault(fam, {})
+                entry.setdefault("appended", []).append({
+                    "times": r["added"], "source": paths[fam], "pipeline": "htq_hw ideal (sim.ideal_grid)",
+                    "overlap_max_diff": r["overlap_max_diff"],
+                    "when": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")})
+                entry["times"] = r["times"]
+                with open(prov, "w") as f:
+                    json.dump(pj, f, indent=1)
 
 
 def cmd_check(args):
@@ -563,6 +582,9 @@ def main(argv=None):
     idl.add_argument("--trunc", type=float, default=1e-10)
     idl.add_argument("--threads", type=int, default=2)
     idl.add_argument("--cache", default=str(pathlib.Path.home() / ".cache" / "htq_hw"))
+    idl.add_argument("--append-to", default=None, metavar="TEMPLATE",
+                     help="existing grid template with {family} (e.g. a card's ideal_{family}.npz) to add "
+                          "the new time rows to, keeping its own rows (sim.append_ideal_rows)")
     idl.set_defaults(fn=cmd_ideal)
     ck = sub.add_parser("check")
     _add_campaign_args(ck)

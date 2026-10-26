@@ -171,6 +171,10 @@ one campaign and `analyze --prefix` picks one card at a time:
 | vac-w00 | prod_vac_ns50, relA_vac_ns50 | 25 + 25 | vacuum-ansatz state (no block), j0 x Z physics + j0 mirror, 12 slices + 1 ref per card |
 | qpdf-scan | six width cards + two vacuum cards | 8 x 20 | prep-only Wilson-line bilinears psi-bar(z) W psi(0), z = +-2m, m = 1..5 (section 4.1) |
 | gauss-midcircuit | prod_k1.26_s0.75_ns50 | see section 4.2 | risk-gated mid-circuit Gauss syndromes |
+| prod-im | prod_k1.26_s0.75_ns50 | 111 | the imaginary tier of W00 on its own (section 4.5): ancilla-Y copies of the 12 j0 slices x 3 readouts, each job carrying its Y mirror and its X mirror, 3 Y refs |
+| relA-im | relA_k1.26_s0.75_ns50 | 261 | the same for all four components: Y copies of j0/j1p1/j1p2 x 3 readouts with the j0 and j1p1 mirrors in both bases, 9 Y refs |
+| prod-quarter | prod_k1.26_s0.75_ns50 | 75 | the other half of the time grid (section 4.5): j0 slices at t = 0.25, 0.75, ..., 5.75, each n full steps plus a half step, with 3 j0 mirrors and 3 refs |
+| relA-quarter | relA_k1.26_s0.75_ns50 | 189 | the same for all four components (9 physics + 6 mirrors per slice, 9 refs) |
 
 Pairing (`group_jobs`, max 8 pubs): a calibration group = the physics pubs
 of one (card, t, readout, dt) and their mirror(s); jobs never mix cards or
@@ -330,6 +334,41 @@ The tensor reduction applies the mirror calibration described above after
 fetching the bitstrings. The qPDF reduction uses vacuum subtraction, without
 that tensor mirror correction. Gauss-law diagnostics are recorded by the
 ordinary readouts; postselection is not automatically applied by `analyze`.
+
+### 4.5 Tiers bought after the real run: the imaginary branch and the quarter times
+
+Both extend a card whose dt = 0.5 real branch already exists (the 2026-10-06
+phoenix run), so they are analysed TOGETHER with those bits (`analyze --by-card`
+over both runs' bits files) and neither re-measures what is on disk.
+
+**Imaginary tier** (`manifest(im_only=True)`, presets `prod-im`, `relA-im`).
+The Hadamard test reads Re from the ancilla's X and Im from its Y, the same
+circuit up to the final rotation.  A Y pub's kappa comes from the X mirror
+and its phase from the Y mirror of the SAME job (`analyze.kappa_for_basis`,
+`analyze.mirror_phase`), so every Y calibration group carries both mirrors
+of its (t, readout): 3 pubs per group on prod (physics, Y mirror, X mirror),
+7 on relA.  The analysis reduces such a job to an imaginary-only slab and
+pairs it with the real branch from the X run's jobs; the merged (Re, Im)
+pair is de-rotated by the Y jobs' own phase.  Without the X run's bits the
+Y bits yield nothing, by design.  The t = 0 Y references keep the tier
+uniform in t (the map builder refuses a half-complex tier).
+
+**Quarter times** (`manifest(quarter_times=...)`, presets `prod-quarter`,
+`relA-quarter`).  A slice at t = 5.75 is 11 full steps of dt = 0.5 plus one
+half step (`campaign.steps_for`; `target.tail_block` composes it from the
+ladder's layout-preserving ISA step, so it is one layer deeper than its
+neighbour rather than twice as deep as a dt = 0.25 circuit).  Pub names and
+slice files carry the exact time (`j0_t5.75_Z`, `slice_00_t5.75.npz`,
+`campaign.QuarterTime`), dt stays 0.5, so the map builder pools them with
+the existing slices as ordinary rows (`hw_w_tensor.py --times 0 0.25 0.5 ...`).
+What a quarter row needs that the dt grid already had: the MPS reference at
+quarter times (prod: `data/w_prodQ_ns50_{j0,j1}_k1.26_s0.75.npz`, dt_out
+0.25; relA's references were stored at 0.25 from the start), the wing
+surrogate at quarter times (`htq_hw/refs/wing_surrogate_*.npz`, rebuilt
+2026-10-26 with the same half-step rule, old rows unchanged), and ideal
+grid rows at the times the acceptance gate rehearses (`python -m htq_hw
+ideal --times 0.25 ... --append-to "htq_hw/cards/<card>/ideal_{family}.npz"`,
+which adds rows to a card's grid without touching its own).
 
 ## 5. Knobs IBM may tune, and invariants
 

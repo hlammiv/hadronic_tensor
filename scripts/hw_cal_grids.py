@@ -157,8 +157,10 @@ MIRROR_EPS = 1e-8
 
 
 def evolution(t, mirror=False):
-    n = int(round(t / args.dt))
-    return trotter.trotter_circuit(lat, args.m0, args.g2, args.eta, MIRROR_EPS if mirror else t, n)
+    # n = floor(t / dt) steps of dt plus a tail step off the dt grid (quarter
+    # times: n full steps and a half step), the mirror depth-matched to it
+    return trotter.hardware_trotter_circuit(lat, args.m0, args.g2, args.eta, t, args.dt,
+                                            eps=MIRROR_EPS if mirror else None)
 
 
 # ---- one-point functions (no ancilla; ancilla idle in |0>)

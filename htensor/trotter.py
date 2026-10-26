@@ -95,6 +95,26 @@ def trotter_circuit(lat: Z2Lattice, m0, g2, eta, t: float, n_steps: int) -> Quan
     return qc
 
 
+def hardware_trotter_circuit(lat: Z2Lattice, m0, g2, eta, t: float, dt: float = 0.5,
+                             eps: float | None = None) -> QuantumCircuit:
+    """The hardware evolution to time t: n = floor(t / dt) steps of dt plus
+    one step of the remainder (a quarter time is n full steps and a half
+    step; htq_hw.campaign.steps_for).  With ``eps`` set, the depth-matched
+    mirror instead: the same n + 1 steps, each of duration eps / (n + 1)."""
+    n = int(np.floor(t / dt + 1e-9))
+    tail = float(round(t - n * dt, 9))
+    tail = tail if tail > 1e-9 else 0.0
+    qc = QuantumCircuit(lat.n_qubits)
+    if eps is not None:
+        m = n + (1 if tail else 0)
+        return trotter_circuit(lat, m0, g2, eta, eps, m) if m else qc
+    if n:
+        qc.compose(trotter_circuit(lat, m0, g2, eta, n * dt, n), inplace=True)
+    if tail:
+        qc.compose(trotter_circuit(lat, m0, g2, eta, tail, 1), inplace=True)
+    return qc
+
+
 def parametric_step(lat: Z2Lattice, m0, g2, eta, name: str = "t"):
     """One second-order step with a SYMBOLIC step size (qiskit Parameter).
 

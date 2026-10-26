@@ -9,7 +9,9 @@ Pub names ``{fam}_{t|m}{T:.1f}_{R}`` (``_Y`` suffix for ancilla-Y copies).
 Options: j1_mirrors (j1p1 mirror x 3 per slice), dither (family j0d = J0
 inserted at site CENTER+1), im (ancilla-Y copies of every pub), im_only (the
 Y tier alone, with the X mirrors riding in the Y jobs; presets prod-im and
-relA-im), dt_half
+relA-im), quarter_times (slices at 0.25, 0.75, ... as n full steps plus a tail
+half step, named by their exact time; presets prod-quarter and relA-quarter),
+dt_half
 (Trotter-systematic control: the SAME physical times ``dt_half_times``,
 default t = 0.5 and 1.0, repeated with twice the steps, dt = 0.25, mirrors
 included, pub names suffixed ``_dt0.25``; the analysis writes them to
@@ -72,6 +74,11 @@ class PubSpec:
     def prefix(self) -> str:
         return name_prefix(self.preset, self.card)
 
+    @property
+    def tail(self) -> float:
+        """The shorter final step of a quarter-time slice (`steps_for`), 0 on the dt grid."""
+        return steps_for(self.t, self.dt)[1] if self.t > 0 else 0.0
+
 
 def name_prefix(preset: str, card: str) -> str:
     """Pub-name prefix ``preset.card:`` used when presets are composed
@@ -83,10 +90,32 @@ def dt_suffix(dt: float) -> str:
     return "" if abs(dt - DT) < 1e-9 else f"_dt{dt:g}"
 
 
+def steps_for(t: float, dt: float = DT) -> tuple[int, float]:
+    """(full steps, tail): the hardware evolution to time t is ``n`` steps of
+    ``dt`` plus one shorter step of ``tail`` (0 on the dt grid).  A quarter
+    time such as 5.75 is 11 full steps and a half step, one layer deeper than
+    its neighbour rather than twice as deep as a dt = 0.25 circuit."""
+    n = int(np.floor(t / dt + 1e-9))
+    tail = float(round(t - n * dt, 9))
+    return n, (tail if tail > 1e-9 else 0.0)
+
+
+class QuarterTime(float):
+    """A time that formats to its exact value: ``f"{QuarterTime(5.75):.1f}"``
+    is '5.75', ``f"{QuarterTime(6.0):.1f}"`` is '6.0'.  Pub names and slice
+    file names are built from ``{t:.1f}`` templates, which on the dt = 0.5
+    grid are exact; this keeps them exact on the quarter grid too without
+    renaming anything that exists."""
+    def __format__(self, spec):
+        if spec.endswith("f") and abs(2 * float(self) - round(2 * float(self))) > 1e-9:
+            return format(float(self), ".2f")
+        return format(float(self), spec)
+
+
 def pub_name(family: str, t: float, mirror: bool, readout: str, anc_basis: str = "X",
              dt: float = DT, prefix: str = "") -> str:
-    return (prefix + f"{family}_{'m' if mirror else 't'}{t:.1f}_{readout}" + ("_Y" if anc_basis == "Y" else "")
-            + dt_suffix(dt))
+    return (prefix + f"{family}_{'m' if mirror else 't'}{QuarterTime(t):.1f}_{readout}"
+            + ("_Y" if anc_basis == "Y" else "") + dt_suffix(dt))
 
 
 def split_prefix(name: str) -> tuple[str, str]:
@@ -127,7 +156,8 @@ def manifest(times=DEFAULT_TIMES, j1_mirrors: bool = False, dither: bool = False
              im: bool = False, dt_half: bool = False, refs: bool = True,
              dt_half_times=DT_HALF_TIMES, families=PHYSICS_FAMILIES, readouts=READOUTS,
              mirror_readouts=None, dither_refs=None, stretch_times=(), card: str = "",
-             preset: str = "", plain: bool = False, im_only: bool = False) -> list[PubSpec]:
+             preset: str = "", plain: bool = False, im_only: bool = False,
+             quarter_times=()) -> list[PubSpec]:
     """Ordered pub specs (see module docstring).  Default: 12 x 12 + 9 = 153.
     ``families``/``readouts`` restrict the physics pubs (e.g. j0 x Z only);
     ``stretch_times`` adds slices flagged stretch (their own groups, ordered
@@ -147,7 +177,12 @@ def manifest(times=DEFAULT_TIMES, j1_mirrors: bool = False, dither: bool = False
     phase from the Y mirror of the SAME job (`analyze.kappa_for_basis`,
     `analyze.mirror_phase`), so each Y group also carries the X mirrors of
     its (t, readout); the real branch itself comes from the X run's jobs when
-    the two sets of bits are analysed together."""
+    the two sets of bits are analysed together.
+
+    ``quarter_times`` adds slices off the dt grid (0.25, 0.75, ...): ``n``
+    full steps plus one tail step (`steps_for`), dt unchanged, named by
+    their exact time.  They double the time sampling of a map whose other
+    half was already measured; the analysis writes them as ordinary slices."""
     fams = list(families) + (["j0d"] if dither else [])
     ref_fams = list(families) + (["j0d"] if (dither if dither_refs is None else dither_refs) else [])
     mirror_fams = ["j0"] + (["j1p1"] if j1_mirrors else [])
@@ -156,6 +191,11 @@ def manifest(times=DEFAULT_TIMES, j1_mirrors: bool = False, dither: bool = False
     slices = [(float(t), int(round(t / DT)), DT, False) for t in times]
     if dt_half:
         slices += [(float(t), int(round(t / HALF_DT)), HALF_DT, False) for t in dt_half_times]
+    for t in quarter_times:
+        n, tail = steps_for(t, DT)
+        if not tail:
+            raise ValueError(f"quarter_times: {t} is on the dt = {DT} grid; pass it in times")
+        slices.append((float(t), n, DT, False))
     slices.sort()
     slices += sorted((float(t), int(round(t / DT)), DT, True) for t in stretch_times)
     want_plain = plain and not im_only and any(f in ("j0", "j0d") for f in fams)
@@ -193,7 +233,8 @@ VAC_CARDS = {"prod": "prod_vac_ns50", "relA": "relA_vac_ns50"}
 QPDF_MS = (1, 2, 3, 4, 5)          # z = +-2m, |z| <= 10
 STRETCH_TIMES = (6.5, 7.0, 7.5, 8.0)
 PRESET_NAMES = ("relA-core", "prod-bridge", "vac-w00", "qpdf-scan", "gauss-midcircuit",
-                "prod-im", "relA-im")
+                "prod-im", "relA-im", "prod-quarter", "relA-quarter")
+QUARTER_TIMES = tuple(round(0.25 + 0.5 * k, 2) for k in range(12))     # 0.25 .. 5.75
 
 
 def qpdf_specs(card: str, preset: str = "qpdf-scan", ms=QPDF_MS) -> list[PubSpec]:
@@ -222,6 +263,15 @@ def preset_specs(name: str) -> list[PubSpec]:
         return manifest(times=t12, j1_mirrors=True, dither=True, dither_refs=False, dt_half=True,
                         dt_half_times=(0.5, 1.0), stretch_times=STRETCH_TIMES,
                         card="relA_k1.26_s0.75_ns50", preset=name, plain=True)
+    if name == "prod-quarter":
+        # the other half of the time grid on the production card: j0 slices
+        # at 0.25 .. 5.75, each n full steps plus a half step, with its own
+        # t = 0 reference; analysed together with the prod-bridge bits
+        return manifest(times=(), quarter_times=QUARTER_TIMES, families=("j0",), dither=False,
+                        dither_refs=False, card="prod_k1.26_s0.75_ns50", preset=name)
+    if name == "relA-quarter":
+        return manifest(times=(), quarter_times=QUARTER_TIMES, j1_mirrors=True, dither=False,
+                        dither_refs=False, card="relA_k1.26_s0.75_ns50", preset=name)
     if name == "prod-im":
         # imaginary tier of the W00 integrand on the production card: Y copies
         # of the 12 committed j0 slices (no dither, no stretch), analysed
@@ -331,15 +381,20 @@ def build_pub_circuits(be, lat: Lattice, card, emb: T.Embedding, specs, basis: s
 def _build_card_pubs(be, lat, card, emb, specs, basis, seed, cache_dir, log, strict, pubs, info, bundles):
     center = card["center"] if lat.ns == card["ns"] else emb.center
     fams = sorted({s.family for s in specs if s.family != "qpdf" and s.preset != "gauss-midcircuit"})
-    steps = {}
+    steps, tails = {}, set()
     for s in specs:
-        if s.n_steps > 0 and s.preset != "gauss-midcircuit":
+        if s.preset == "gauss-midcircuit":
+            continue
+        if s.tail:
+            tails.add((s.n_steps, s.tail))
+        elif s.n_steps > 0:
             steps.setdefault(s.n_steps, set()).add(s.dt)
     cb = {}
     for fam in fams:
         kind, off = FAMILY_GADGET[fam]
         cb[fam] = T.transpile_bundle(be, lat, card, emb, tuple(sorted(steps)), basis, kind, seed, cache_dir,
-                                     log=log, gadget_center=emb.center + off if off else None)
+                                     log=log, gadget_center=emb.center + off if off else None,
+                                     tails=tuple(sorted(tails)))
         bundles[(card["name"], fam)] = cb[fam]
     if any(s.family == "qpdf" for s in specs):
         base = C.prep_only_circuit(lat, card, emb.center)
@@ -360,7 +415,10 @@ def _build_card_pubs(be, lat, card, emb, specs, basis, seed, cache_dir, log, str
     for n, dts in steps.items():
         for dt in dts:
             phys, mir = T.assign_block(ref, n, n * dt)
-            blocks[(n, dt)] = (phys, mir, ref.blocks[n]["layout"])
+            blocks[(n, dt, 0.0)] = (phys, mir, ref.blocks[n]["layout"])
+    for n, tail in tails:
+        blk = ref.blocks[(n, tail)]
+        blocks[(n, DT, tail)] = (blk["physics"], blk["mirror"], blk["layout"])
     if any(s.preset == "gauss-midcircuit" for s in specs):
         from .gauss import gauss_circuit, patch_sites, n_rounds, gauss_ancilla_sites
         sites = patch_sites(lat, emb.center)
@@ -398,10 +456,10 @@ def _build_card_pubs(be, lat, card, emb, specs, basis, seed, cache_dir, log, str
             layout = fl
         else:
             b = cb["j0"] if s.mirror else cb[s.family]
-            if s.n_steps == 0:
+            if s.n_steps == 0 and not s.tail:
                 body, layout, body_hash = b.base, b.base_layout, ""
             else:
-                phys, mir, layout = blocks[(s.n_steps, s.dt)]
+                phys, mir, layout = blocks[(s.n_steps, s.dt, s.tail)]
                 blk = mir if s.mirror else phys
                 body, body_hash = b.base.compose(blk), _skel_hash(blk)
             qc = C.readout_layer(body, lat, layout, s.readout, s.anc_basis)

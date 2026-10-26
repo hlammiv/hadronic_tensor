@@ -91,6 +91,26 @@ def test_prep_card_is_gauge_invariant_small_volume():
         assert abs(sv.expectation_value(G) - 1) < 1e-10
 
 
+def test_hardware_block_is_full_steps_plus_a_tail():
+    """A quarter time evolves as n full steps of dt and one half step, one
+    layer deeper than its neighbour; the mirror has the same n + 1 steps."""
+    from htensor import trotter
+    from htensor.lattice import Z2Lattice
+    lat = M.Lattice(4)
+    ref = C.trotter_block(lat, 1, 0.5).compose(C.trotter_block(lat, 1, 0.25))
+    blk = C.hardware_block(lat, 0.75, 0.5)
+    assert Operator(blk).equiv(Operator(ref))
+    assert Operator(C.hardware_block(lat, 1.0, 0.5)).equiv(Operator(C.trotter_block(lat, 2, 1.0)))
+    assert C.hardware_block(lat, 0.0, 0.5).size() == 0
+    mir = C.hardware_block(lat, 0.75, 0.5, eps=1e-8)
+    assert mir.count_ops() == blk.count_ops()
+    assert Operator(mir).equiv(Operator(QuantumCircuit(lat.n_qubits)))
+    zl = Z2Lattice(4, pbc=True)
+    lref = trotter.trotter_circuit(zl, 0.7, 1.1, 1.3, 0.5, 1).compose(trotter.trotter_circuit(zl, 0.7, 1.1, 1.3, 0.25, 1))
+    assert Operator(trotter.hardware_trotter_circuit(zl, 0.7, 1.1, 1.3, 0.75)).equiv(Operator(lref))
+    assert trotter.hardware_trotter_circuit(zl, 0.7, 1.1, 1.3, 0.75, eps=1e-8).count_ops() == lref.count_ops()
+
+
 def test_parametric_block_equals_numeric():
     lat = M.Lattice(4)
     t = Parameter("t")

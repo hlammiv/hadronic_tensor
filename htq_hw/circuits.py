@@ -155,6 +155,26 @@ def trotter_block(lat: Lattice, n_steps: int, t, m0=M0, g2=G2, eta=ETA,
     return qc
 
 
+def hardware_block(lat: Lattice, t: float, dt: float, m0=M0, g2=G2, eta=ETA, eps=None,
+                   n_wires: int | None = None, form: str = "rxxryy") -> QuantumCircuit:
+    """The hardware evolution to time t as the device runs it: n = floor(t / dt)
+    steps of dt and, off the dt grid, one tail step of the remainder (a
+    quarter time is n full steps plus a half step; campaign.steps_for).  With
+    ``eps`` the depth-matched mirror instead: the same n (+ 1) steps, each of
+    duration eps / (n + 1).  Numeric times only (the parametric path is
+    target.tail_block)."""
+    n = int(np.floor(t / dt + 1e-9))
+    tail = float(round(t - n * dt, 9))
+    tail = tail if tail > 1e-9 else 0.0
+    m = n + (1 if tail else 0)
+    if eps is not None:
+        return trotter_block(lat, m, eps, m0, g2, eta, n_wires=n_wires, form=form)
+    qc = trotter_block(lat, n, n * dt, m0, g2, eta, n_wires=n_wires, form=form)
+    if tail:
+        qc.compose(trotter_block(lat, 1, tail, m0, g2, eta, n_wires=n_wires, form=form), inplace=True)
+    return qc
+
+
 def assign(qc: QuantumCircuit, t, value: float) -> QuantumCircuit:
     """Bind the block parameter.  Accepts the Parameter object or its name
     (qpy round trips rebuild Parameter objects)."""

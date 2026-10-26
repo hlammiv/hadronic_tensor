@@ -1355,7 +1355,8 @@ HOP_FORM_FOR_BASIS = {"cz": "xy2cx", "rzz": "rxxryy"}
 def transpile_bundle(be, lat: Lattice, card: dict, emb: Embedding, steps=(1,),
                      basis: str = "cz", kind: str = "J0", seed: int = SEED,
                      cache_dir=None, opt_level: int = 3, log=None,
-                     hop_form: str | None = None, gadget_center: int | None = None) -> Bundle:
+                     hop_form: str | None = None, gadget_center: int | None = None,
+                     tails=()) -> Bundle:
     """Base (prep + gadget) at O3 on the embedding; parametric Trotter step at
     O3 from the base's final layout; per n in ``steps`` a physics/mirror pair
     with asserted-equal skeletons.  Ladder: layout must be preserved by the
@@ -1390,7 +1391,42 @@ def transpile_bundle(be, lat: Lattice, card: dict, emb: Embedding, steps=(1,),
     for n in steps:
         b.blocks[n] = _make_block(b, be, lat, n, t, preserved, fractional, opt_level,
                                   seed, cache_dir, log)
+    for n, tail in tails:
+        b.blocks[(n, tail)] = tail_block(b, be, n, tail, t, fractional)
     return b
+
+
+def tail_block(b: Bundle, be, n: int, tail: float, t=None, fractional: bool | None = None,
+               eps: float = MIRROR_EPS) -> dict:
+    """Physics/mirror pair for a quarter-time slice: ``n`` full steps of DT and
+    one step of ``tail`` (`campaign.steps_for`), composed from the bundle's
+    ISA step, so it needs the layout-preserving (ladder) step.  The mirror
+    gives every one of its n + 1 steps eps / (n + 1).  Same skeleton as the
+    physics by construction, one step deeper than the n-step block."""
+    if not b.layout_preserved:
+        raise AssertionError("tail steps need a layout-preserving Trotter step (ladder embedding); "
+                             "the ring's whole-block transpile cannot be extended by one step")
+    if not (0 < tail < DT):
+        raise ValueError(f"tail step must lie in (0, {DT}); got {tail}")
+    t = t if t is not None else next(iter(b.step.parameters))
+    fractional = b.basis == "rzz" if fractional is None else fractional
+    full = C.assign(b.step, t, DT)
+    phys = C.assign(b.step, t, tail)
+    mir = C.assign(b.step, t, eps / (n + 1))
+    for _ in range(n):
+        phys = full.compose(phys)
+        mir = C.assign(b.step, t, eps / (n + 1)).compose(mir)
+    if fractional:
+        phys, mir = fold_rzz(phys), fold_rzz(mir)
+    n2q = assert_skeleton_equal(phys, mir)
+    full_c = b.base.compose(phys)
+    return {"physics": phys, "mirror": mir, "layout": b.step_layout, "mode": "composed+tail",
+            "n2q": n2q, "parametric": None, "n_steps": n, "tail": tail,
+            "ops2q": count_ops_2q(phys), "depth2q": depth_2q(phys),
+            "duration_us": duration_us(phys, be),
+            "full_n2q": count_2q(full_c), "full_depth2q": depth_2q(full_c),
+            "full_duration_us": duration_us(full_c, be),
+            "seconds": 0.0}
 
 
 def _make_block(b: Bundle, be, lat, n, t, preserved, fractional, opt_level, seed,
