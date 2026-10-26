@@ -35,7 +35,8 @@ A third effect is NOT an error on A and is not quoted as one.  The device
 measures only the real part of the connected correlator, so A is the
 amplitude of the **Re-projected** asymmetry; the reference goes through the
 same projection, so it cancels in the ratio, but the Re-projected asymmetry
-is 0.67 of the full one at the production point and 0.30 at relA.
+is 0.93 of the full one at the published kingston window (t <= 3), 0.67 at
+the production point with t <= 6, and 0.30 at relA.
 
 Published (ibm_kingston, t <= 3, 6 slices, sigma_t = 1.5, wedge q0 in
 [0, 2.5]): see data/hw_w00_coarse_t3.npz for the current A_hat, A_err and
