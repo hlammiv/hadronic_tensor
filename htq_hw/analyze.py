@@ -308,6 +308,37 @@ def derotate(re, im, tan_phi):
     return c * re + sn * im, c * im - sn * re
 
 
+def phase_for(job, jobs, t: float, family: str, dt: float, sx_i0=None) -> float:
+    """tan(phi) for a slice: from this job's own Z-readout mirrors, else from
+    any other job at the same (t, dt) that carries both (the phase is a
+    property of the ancilla path, which every readout basis of a slice
+    shares), else nan (which `derotate` treats as no correction)."""
+    tan, _ = mirror_phase(job, t, family, dt, sx_i0=sx_i0)
+    if np.isfinite(tan):
+        return float(tan)
+    for other in jobs:
+        if other is job:
+            continue
+        tan, _ = mirror_phase(other, t, family, dt, sx_i0=sx_i0)
+        if np.isfinite(tan):
+            return float(tan)
+    return float("nan")
+
+
+def _im_parts(job, fams, probe, t, ideals, ideal_j0, center, wing, dt, surrogate, log, jobs):
+    """The calibrated Y-ancilla part of every insertion family in one job, or
+    None when any family is missing.  kappa is the X mirror's (`kappa_for_basis`)."""
+    iparts = []
+    for fam in fams:
+        r = (_calib_J0(job, fam, t, ideals[fam], ideal_j0, center, "Y", wing, dt,
+                       surrogate=surrogate, log=log) if probe == "J0"
+             else _calib_J1(job, fam, t, ideal_j0, "Y", dt, center, log, jobs))
+        if r is None:
+            return None
+        iparts.append(r)
+    return iparts
+
+
 def kappa_for_basis(job, t: float, family: str, dt: float, anc: str, sx_i0):
     """-> (kappa, kerr) for a slice read in ancilla basis `anc`.
 
@@ -802,6 +833,7 @@ def component_slice(comp: str, t: float, jobs: list[JobBits], ideals: dict, lat:
     id_b = ideal_j0.id_b() if probe == "J0" else np.zeros(lat.ns)
     id_a = ideals[fams[0]].id_a
     per_job, complete_jobs = [], set()
+    sx_i0_phase = ideal_j0.sx_ideal0("J0") if probe == "J0" else None
     for job in jobs:
         parts = []
         for fam in fams:
@@ -813,6 +845,20 @@ def component_slice(comp: str, t: float, jobs: list[JobBits], ideals: dict, lat:
                 break
             parts.append(r)
         if not parts:
+            if im:
+                # a Y-only job (the imaginary tier bought after the real one,
+                # `campaign.manifest(im_only=True)`): its kappa is its own X
+                # mirror's, its phase its own Y mirror's, and the real branch
+                # it is paired with comes from the X run's jobs below
+                iparts = _im_parts(job, fams, probe, t, ideals, ideal_j0, center, wing, dt,
+                                   surrogate, log, jobs)
+                if iparts:
+                    per_job.append({"anc_cal_im": sum(p["anc_cal"] for p in iparts),
+                                    "var_im": sum(p["var_anc"] for p in iparts),
+                                    "tan_phi": phase_for(job, jobs, t, fams[0], dt, sx_i0_phase),
+                                    "im_only": True, "N": sum(p["N"] for p in iparts),
+                                    "job": job.job_id})
+                    complete_jobs.add(id(job))
             continue
         slab = {"anc_cal": sum(p["anc_cal"] for p in parts),
                 "fill": sorted({b for p in parts for b in p.get("fill", [])}),
@@ -833,19 +879,10 @@ def component_slice(comp: str, t: float, jobs: list[JobBits], ideals: dict, lat:
             slab["kap2"] = np.mean([p["kap2"] for p in parts], 0)
             slab["one"] = np.mean([p["one"] for p in parts], 0)
         if im:
-            iparts = []
-            for fam in fams:
-                r = (_calib_J0(job, fam, t, ideals[fam], ideal_j0, center, "Y", wing, dt,
-                               surrogate=surrogate, log=log) if probe == "J0"
-                     else _calib_J1(job, fam, t, ideal_j0, "Y", dt, center, log, jobs))
-                if r is None:
-                    iparts = []
-                    break
-                iparts.append(r)
+            iparts = _im_parts(job, fams, probe, t, ideals, ideal_j0, center, wing, dt,
+                               surrogate, log, jobs)
             if iparts:
-                tan_phi, _ = mirror_phase(
-                    job, t, fams[0], dt,
-                    sx_i0=ideal_j0.sx_ideal0("J0") if probe == "J0" else None)
+                tan_phi = phase_for(job, jobs, t, fams[0], dt, sx_i0_phase)
                 re_c, im_c = derotate(slab["anc_cal"],
                                       sum(p["anc_cal"] for p in iparts), tan_phi)
                 slab["anc_cal"], slab["anc_cal_im"] = re_c, im_c
@@ -861,20 +898,49 @@ def component_slice(comp: str, t: float, jobs: list[JobBits], ideals: dict, lat:
             per_job.append(split)
             _log(f"  {comp} t={t:g}, dt={dt:g}: combined separately calibrated XY readouts "
                  f"from {len(split['jobs'])} jobs", log)
+        if im:
+            # the same for Y-only jobs whose XYA and XYB readouts sit in
+            # different jobs; `var` here includes the one-point term, which
+            # overstates the imaginary error slightly
+            isplit = _split_J1_slab([job for job in jobs if id(job) not in complete_jobs],
+                                    fams, t, ideal_j0, "Y", dt, log, center, jobs)
+            if isplit is not None:
+                ph = [phase_for(j, jobs, t, fams[0], dt, None) for j in jobs if j.job_id in isplit["jobs"]]
+                ph = [x for x in ph if np.isfinite(x)]
+                per_job.append({"anc_cal_im": isplit["anc_cal"], "var_im": isplit["var"],
+                                "tan_phi": float(np.mean(ph)) if ph else float("nan"),
+                                "im_only": True, "N": isplit["N"], "jobs": isplit["jobs"]})
+                _log(f"  {comp} t={t:g}, dt={dt:g}: combined separately calibrated Y-ancilla XY "
+                     f"readouts from {len(isplit['jobs'])} jobs", log)
     if not per_job:
         return None
-    anc_cal, err = _merge(per_job)
-    anc_raw, _ = _merge(per_job, key="anc_raw")
+    real = [s for s in per_job if "anc_cal" in s]
+    if not real:
+        _log(f"  {comp} t={t:g}, dt={dt:g}: only Y-ancilla jobs; the imaginary tier needs the "
+             "real branch's jobs in the same analysis", log)
+        return None
+    anc_cal, err = _merge(real)
+    anc_raw, _ = _merge(real, key="anc_raw")
     im_slabs = [s for s in per_job if "anc_cal_im" in s]
     anc_im, err_im, tan_phi = None, None, float("nan")
     if im_slabs:
         anc_im, err_im = _merge(im_slabs, key="anc_cal_im", var="var_im")
         phases = [s["tan_phi"] for s in im_slabs if np.isfinite(s["tan_phi"])]
         tan_phi = float(np.mean(phases)) if phases else float("nan")
+        only = [s for s in im_slabs if s.get("im_only")]
+        if only and len(only) == len(im_slabs):
+            # Y-only jobs carry nothing to de-rotate against, so the merged
+            # pair is de-rotated here by the Y jobs' own phase: the imaginary
+            # part loses its O(phi . Re) leakage and the X jobs' real part is
+            # shifted by O(phi . Im), both with the Y session's phi
+            anc_cal, anc_im = derotate(anc_cal, anc_im, tan_phi)
+        elif only:
+            _log(f"  {comp} t={t:g}, dt={dt:g}: {len(only)} Y-only job(s) merged with jobs carrying "
+                 "both ancilla bases; the Y-only part is left un-derotated", log)
         _log(f"  {comp} t={t:g}, dt={dt:g}: imaginary branch from "
              f"{len(im_slabs)}/{len(per_job)} jobs, ancilla phase "
              f"{np.degrees(np.arctan(tan_phi)):+.2f} deg", log)
-    kap = np.ones(lat.ns) if t == 0 else np.mean([s["kap"] for s in per_job], 0)
+    kap = np.ones(lat.ns) if t == 0 else np.mean([s["kap"] for s in real], 0)
     out = {"times": np.array([t]), "probes": np.arange(lat.ns), "id_a": id_a, "dt": float(dt),
            "raw_reference": bool(t == 0),
            "c_a": FAMILY_COEFF[fams[0]] * (lat_eta(jobs) if fams[0].startswith("j1") else 1.0),
@@ -889,7 +955,8 @@ def component_slice(comp: str, t: float, jobs: list[JobBits], ideals: dict, lat:
         # probe one-point term, so its error is the ancilla signal's alone.
         out["C_err_im"] = np.real(err_im)[None, :]
         out["anc_phase"] = np.array([tan_phi])
-        out["im_jobs"] = np.array([s["job"] for s in im_slabs if "job" in s])
+        out["im_jobs"] = np.array(list(dict.fromkeys(
+            source for s in im_slabs for source in (s["jobs"] if "jobs" in s else [s["job"]]))))
     if split is not None:
         out["split_readout_jobs"] = np.array(split["jobs"])
         out["split_readout_calibration"] = "same-job mirrors; median fill per readout and Pauli term"
@@ -901,9 +968,9 @@ def component_slice(comp: str, t: float, jobs: list[JobBits], ideals: dict, lat:
                              f"error {PREP_BLIND_MODEL_ERR}; guard failures elsewhere median-filled"
                              if filled else "median fill per readout and Pauli term")
     if probe == "J0":
-        b_cal, b_err = _merge(per_job, key="b_cal", var="bvar")
+        b_cal, b_err = _merge(real, key="b_cal", var="bvar")
         C_cal = rebuild_C(anc_cal, b_cal, id_a, id_b, A0)
-        C_raw = rebuild_C(anc_raw, np.mean([s["B"] for s in per_job], 0), id_a, id_b, A0)
+        C_raw = rebuild_C(anc_raw, np.mean([s["B"] for s in real], 0), id_a, id_b, A0)
         # b_err is the error on the probe one-point itself.  C_err carries it
         # with weight id_a, but G = C_cal - b_cal A0 carries it with weight
         # (id_a - A0), so a consumer needs the two separately: see
@@ -912,18 +979,18 @@ def component_slice(comp: str, t: float, jobs: list[JobBits], ideals: dict, lat:
             C_cal = C_cal + 1j * anc_im
         out.update(C=(C_raw + 0j)[None, :], C_cal=(C_cal + 0j)[None, :], b_cal=(b_cal + 0j)[None, :],
                    b_err=np.real(b_err)[None, :],
-                   beta_v=np.mean([s["bet"] for s in per_job], 0)[None, :],
-                   gauss=np.mean([s["gauss"] for s in per_job], 0)[None, :])
+                   beta_v=np.mean([s["bet"] for s in real], 0)[None, :],
+                   gauss=np.mean([s["gauss"] for s in real], 0)[None, :])
     else:
-        one = np.mean([s["one"] for s in per_job], 0)
+        one = np.mean([s["one"] for s in real], 0)
         C_cal = anc_cal + id_a * one + id_b * (A0 - id_a) + id_a * id_b
         if anc_im is not None:
             C_cal = C_cal + 1j * anc_im
         C_raw = anc_raw + id_a * one
         out.update(C=(C_raw + 0j)[None, :], C_cal=(C_cal + 0j)[None, :],
                    beta_v=np.ones((1, lat.ns)), one_pt=one[None, :],
-                   kappa1_v=np.mean([s["kap1"] for s in per_job], 0)[None, :],
-                   kappa2_v=np.mean([s["kap2"] for s in per_job], 0)[None, :])
+                   kappa1_v=np.mean([s["kap1"] for s in real], 0)[None, :],
+                   kappa2_v=np.mean([s["kap2"] for s in real], 0)[None, :])
     return out
 
 

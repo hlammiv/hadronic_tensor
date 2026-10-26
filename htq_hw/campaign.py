@@ -7,7 +7,9 @@ plus the t = 0 references once: j0 / j1p1 / j1p2 x 3 readouts (9 pubs).
 Pub names ``{fam}_{t|m}{T:.1f}_{R}`` (``_Y`` suffix for ancilla-Y copies).
 
 Options: j1_mirrors (j1p1 mirror x 3 per slice), dither (family j0d = J0
-inserted at site CENTER+1), im (ancilla-Y copies of every pub), dt_half
+inserted at site CENTER+1), im (ancilla-Y copies of every pub), im_only (the
+Y tier alone, with the X mirrors riding in the Y jobs; presets prod-im and
+relA-im), dt_half
 (Trotter-systematic control: the SAME physical times ``dt_half_times``,
 default t = 0.5 and 1.0, repeated with twice the steps, dt = 0.25, mirrors
 included, pub names suffixed ``_dt0.25``; the analysis writes them to
@@ -107,9 +109,16 @@ def parse_pub_name(name: str) -> dict:
     return out
 
 
-def _spec(family, t, mirror, readout, anc, n_steps, dt, card="", preset="", stretch=False):
+def _group(prefix: str, t: float, readout: str, anc: str, dt: float, stretch: bool = False) -> str:
+    """Calibration group: the pubs that must share a job (same t, readout basis
+    and ancilla basis, plus the mirrors that calibrate them)."""
+    return prefix + ("refs" if t == 0 else f"t{t:.2f}_{readout}_{anc}{dt_suffix(dt)}" + ("_stretch" if stretch else ""))
+
+
+def _spec(family, t, mirror, readout, anc, n_steps, dt, card="", preset="", stretch=False, group=None):
     prefix = name_prefix(preset, card)
-    group = prefix + ("refs" if t == 0 else f"t{t:.2f}_{readout}_{anc}{dt_suffix(dt)}" + ("_stretch" if stretch else ""))
+    if group is None:
+        group = _group(prefix, t, readout, anc, dt, stretch)
     return PubSpec(pub_name(family, t, mirror, readout, anc, dt, prefix), family, float(t), mirror, readout,
                    anc, n_steps, dt, group, card, preset, stretch)
 
@@ -118,7 +127,7 @@ def manifest(times=DEFAULT_TIMES, j1_mirrors: bool = False, dither: bool = False
              im: bool = False, dt_half: bool = False, refs: bool = True,
              dt_half_times=DT_HALF_TIMES, families=PHYSICS_FAMILIES, readouts=READOUTS,
              mirror_readouts=None, dither_refs=None, stretch_times=(), card: str = "",
-             preset: str = "", plain: bool = False) -> list[PubSpec]:
+             preset: str = "", plain: bool = False, im_only: bool = False) -> list[PubSpec]:
     """Ordered pub specs (see module docstring).  Default: 12 x 12 + 9 = 153.
     ``families``/``readouts`` restrict the physics pubs (e.g. j0 x Z only);
     ``stretch_times`` adds slices flagged stretch (their own groups, ordered
@@ -129,18 +138,27 @@ def manifest(times=DEFAULT_TIMES, j1_mirrors: bool = False, dither: bool = False
     of taking it from the Hadamard pub's ancilla marginal, which is the average
     of the inserted and uninserted branches.  The distinction is worth 0.7% of
     peak on a packet but more than 100% on the vacuum, where the lever
-    (id_a - A0) is 0.41 rather than 0.023, so a measured vacuum needs it."""
+    (id_a - A0) is 0.41 rather than 0.023, so a measured vacuum needs it.
+
+    ``im_only`` builds the imaginary tier on its own, for a card whose real
+    branch was already measured: ancilla-Y physics pubs and Y mirrors only
+    (plus the Y references at t = 0, so the tier is uniform in t), and no
+    plain pubs.  The analysis takes a Y pub's kappa from the X mirror and its
+    phase from the Y mirror of the SAME job (`analyze.kappa_for_basis`,
+    `analyze.mirror_phase`), so each Y group also carries the X mirrors of
+    its (t, readout); the real branch itself comes from the X run's jobs when
+    the two sets of bits are analysed together."""
     fams = list(families) + (["j0d"] if dither else [])
     ref_fams = list(families) + (["j0d"] if (dither if dither_refs is None else dither_refs) else [])
     mirror_fams = ["j0"] + (["j1p1"] if j1_mirrors else [])
     mirror_readouts = list(readouts if mirror_readouts is None else mirror_readouts)
-    ancs = ["X"] + (["Y"] if im else [])
+    ancs = ["Y"] if im_only else ["X"] + (["Y"] if im else [])
     slices = [(float(t), int(round(t / DT)), DT, False) for t in times]
     if dt_half:
         slices += [(float(t), int(round(t / HALF_DT)), HALF_DT, False) for t in dt_half_times]
     slices.sort()
     slices += sorted((float(t), int(round(t / DT)), DT, True) for t in stretch_times)
-    want_plain = plain and any(f in ("j0", "j0d") for f in fams)
+    want_plain = plain and not im_only and any(f in ("j0", "j0d") for f in fams)
     specs = []
     if refs:
         for anc in ancs:
@@ -157,6 +175,11 @@ def manifest(times=DEFAULT_TIMES, j1_mirrors: bool = False, dither: bool = False
             for fam in mirror_fams:
                 for r in mirror_readouts:
                     specs.append(_spec(fam, t, True, r, anc, n, dt, card, preset, stretch))
+            if im_only:           # the X mirror supplies kappa, so it rides in the Y job
+                for fam in mirror_fams:
+                    for r in mirror_readouts:
+                        specs.append(_spec(fam, t, True, r, "X", n, dt, card, preset, stretch,
+                                           group=_group(name_prefix(preset, card), t, r, "Y", dt, stretch)))
         if want_plain:
             specs.append(_spec("plain", t, False, "Z", "X", n, dt, card, preset, stretch))
             specs.append(_spec("plain", t, True, "Z", "X", n, dt, card, preset, stretch))
@@ -169,7 +192,8 @@ WIDTH_CARDS = ("prod_k1.26_s0.75_ns50", "prod_k1.26_s1.00_ns50", "prod_k1.26_s1.
 VAC_CARDS = {"prod": "prod_vac_ns50", "relA": "relA_vac_ns50"}
 QPDF_MS = (1, 2, 3, 4, 5)          # z = +-2m, |z| <= 10
 STRETCH_TIMES = (6.5, 7.0, 7.5, 8.0)
-PRESET_NAMES = ("relA-core", "prod-bridge", "vac-w00", "qpdf-scan", "gauss-midcircuit")
+PRESET_NAMES = ("relA-core", "prod-bridge", "vac-w00", "qpdf-scan", "gauss-midcircuit",
+                "prod-im", "relA-im")
 
 
 def qpdf_specs(card: str, preset: str = "qpdf-scan", ms=QPDF_MS) -> list[PubSpec]:
@@ -198,6 +222,17 @@ def preset_specs(name: str) -> list[PubSpec]:
         return manifest(times=t12, j1_mirrors=True, dither=True, dither_refs=False, dt_half=True,
                         dt_half_times=(0.5, 1.0), stretch_times=STRETCH_TIMES,
                         card="relA_k1.26_s0.75_ns50", preset=name, plain=True)
+    if name == "prod-im":
+        # imaginary tier of the W00 integrand on the production card: Y copies
+        # of the 12 committed j0 slices (no dither, no stretch), analysed
+        # together with the prod-bridge bits
+        return manifest(times=t12, families=("j0",), dither=False, dither_refs=False, im_only=True,
+                        card="prod_k1.26_s0.75_ns50", preset=name)
+    if name == "relA-im":
+        # imaginary tier of all four components on the relA card: Y copies of
+        # the 12 committed slices with the j0 and j1p1 mirrors
+        return manifest(times=t12, j1_mirrors=True, dither=False, dither_refs=False, im_only=True,
+                        card="relA_k1.26_s0.75_ns50", preset=name)
     if name == "prod-bridge":
         return manifest(times=tuple(round(0.5 * k, 2) for k in range(1, 17)), families=("j0",), dither=True,
                         dither_refs=True, card="prod_k1.26_s0.75_ns50", preset=name, plain=True)

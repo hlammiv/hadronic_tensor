@@ -761,6 +761,53 @@ def test_analyze_recovers_the_exact_imaginary_correlator_from_Y_pubs(setup, tmp_
     assert np.abs(z00["C_cal"][0].real - _ideal_C(ideals, "00", t, NS, eta)).max() < 0.15
 
 
+def test_a_y_only_tier_is_reduced_against_the_x_runs_jobs(setup, tmp_path):
+    """The imaginary tier bought after the real one: Y physics, Y mirrors and
+    the X mirrors in their own jobs (`manifest(im_only=True)`), the real branch
+    in the earlier X jobs.  Analysed together they give the same complex C_cal
+    as a joint job; the Y jobs alone give nothing, by design."""
+    card, lat, tpl = setup
+    eta = card["couplings"]["eta"]
+    kappa = {"Z": 0.7, "XYA": 0.55, "XYB": 0.55}
+    specs_x = CP.manifest(times=TIMES)
+    specs_y = CP.manifest(times=TIMES, im_only=True)
+    assert not any(CP.parse_pub_name(s.name)["anc_basis"] == "X" and not s.mirror for s in specs_y)
+    paths = []
+    for tag, specs, seed in (("x", specs_x, 17), ("y", specs_y, 23)):
+        bits = _synthetic_bits(card, lat, specs, kappa, 20000, seed=seed)
+        path = str(tmp_path / f"htq_bits_{tag}.npz")
+        np.savez_compressed(path, job_id=tag, backend="synthetic",
+                            pub_names=np.array(list(bits)), **bits)
+        paths.append(path)
+    ideals = A.load_ideal_grids(tpl, ("j0", "j1p1", "j1p2"))
+    t = TIMES[0]
+
+    assert A.analyze([paths[1]], tpl, str(tmp_path / "yonly_{comp}_t{t:.1f}.npz"), NS, CENTER,
+                     eta=eta, backend="synthetic", log=None) == {}
+
+    written = A.analyze(paths, tpl, str(tmp_path / "pair_{comp}_t{t:.1f}.npz"), NS, CENTER,
+                        eta=eta, backend="synthetic", log=None)
+    for comp in A.COMPONENTS:
+        z = np.load(written[(comp, t)], allow_pickle=True)
+        for k in A.SLICE_KEYS_IM:
+            assert k in z.files, (comp, k)
+        assert set(z["im_jobs"].tolist()) == {"y"} and "x" in z["merged_jobs"].tolist()
+        im, err = z["C_cal"][0].imag, z["C_err_im"][0]
+        ref = _ideal_im_C(ideals, comp, t, NS, eta)
+        g0 = ideals["j0"]
+        strong = (np.abs(g0.sx_ideal0("J0")) > A.KAP_GUARD if comp in ("00", "01")
+                  else np.minimum(np.abs(g0.sx_ideal0("J1", 1)),
+                                  np.abs(g0.sx_ideal0("J1", 2))) > A.KAP_GUARD)
+        pull = np.abs(im - ref)[strong] / np.maximum(err[strong], 1e-12)
+        assert np.median(pull) < 3.0, (comp, np.median(pull), im[strong], ref[strong])
+        assert np.abs(z["C_cal"][0].real - _ideal_C(ideals, comp, t, NS, eta)).max() < 0.15
+    z00 = np.load(written[("00", t)], allow_pickle=True)
+    assert np.abs(z00["C_cal"][0].imag).max() > 0.02
+    # the t = 0 reference of the tier is the Y pub itself, raw
+    z0 = np.load(written[("00", 0.0)], allow_pickle=True)
+    assert z0["raw_reference"] and "C_err_im" in z0.files
+
+
 def test_no_im_forces_the_real_part_only_even_with_Y_pubs_present(setup, tmp_path):
     """--no-im has to be a real override, and the real part it returns must be
     the one the published pipeline would have produced."""

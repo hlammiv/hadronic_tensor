@@ -38,6 +38,32 @@ def test_manifest_counts():
                                                          "readout": "XYB", "anc_basis": "Y", "dt": 0.25, "prefix": ""}
 
 
+def test_im_only_manifest_rides_the_x_mirrors_with_the_y_physics():
+    """The imaginary tier on its own: no X physics, no plain pubs, Y refs, and
+    every Y physics pub's job carries the X mirror (kappa) and the Y mirror
+    (phase) of its (t, readout)."""
+    specs = CP.manifest(im_only=True)
+    assert len(specs) == 9 + 12 * (9 + 3 + 3)
+    assert not any(s.anc_basis == "X" and not s.mirror for s in specs)
+    assert not any(s.family == "plain" for s in CP.manifest(im_only=True, plain=True))
+    assert all(s.anc_basis == "Y" for s in specs if s.t == 0)
+    by = {s.name: s for s in specs}
+    for job in CP.group_jobs(specs, max_pubs=8)[1:]:
+        assert len(job) <= 8
+        for n in job:
+            s = by[n]
+            if s.mirror:
+                continue
+            assert s.anc_basis == "Y"
+            assert CP.pub_name("j0", s.t, True, s.readout, "X") in job
+            assert CP.pub_name("j0", s.t, True, s.readout, "Y") in job
+    for name in ("prod-im", "relA-im"):
+        ps = CP.preset_specs(name)
+        assert all(s.anc_basis == "Y" or s.mirror for s in ps) and not any(s.stretch for s in ps)
+    assert len(CP.preset_specs("prod-im")) == 3 + 12 * 9
+    assert len(CP.preset_specs("relA-im")) == 9 + 12 * 21
+
+
 def test_group_jobs_pairing():
     specs = CP.manifest()
     jobs = CP.group_jobs(specs, max_pubs=8)
