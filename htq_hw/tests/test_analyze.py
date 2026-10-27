@@ -87,6 +87,24 @@ def test_estimators_match_reference_formulas():
     assert val[0] == pytest.approx(1.3 / 4 * (rA["xT"][0] - rB["xT"][0]))
 
 
+def test_analyze_resolves_the_wing_surrogate_template_per_card(setup, tmp_path):
+    """The command line hands analyze the {tag} template of the installed
+    surrogates; it must resolve it for the card (2026-10-27: the command path
+    opened the literal name and raised FileNotFoundError, the rehearsal path
+    had always resolved it)."""
+    card, lat, tpl = setup
+    eta = card["couplings"]["eta"]
+    specs = CP.manifest(times=(0.0, 0.5), families=("j0",))
+    bits = _synthetic_bits(card, lat, specs, {"Z": 0.8, "XYA": 0.6, "XYB": 0.6}, 2000, seed=3)
+    bpath = str(tmp_path / "htq_bits_ws.npz")
+    np.savez_compressed(bpath, job_id="ws", backend="synthetic", pub_names=np.array(list(bits)), **bits)
+    template = C.ref_path("wing_surrogate_{tag}.npz")
+    assert "{tag}" in template and os.path.exists(A.wing_path_for(template, card["name"]))
+    written = A.analyze([bpath], tpl, str(tmp_path / "ws_{comp}_t{t:.1f}.npz"), NS, CENTER, eta=eta,
+                        components=("00",), card=card["name"], wing_surrogate=template, log=None)
+    assert ("00", 0.5) in written
+
+
 def test_analyze_recovers_injected_kappa_and_ideal_C(setup, tmp_path):
     card, lat, tpl = setup
     eta = card["couplings"]["eta"]

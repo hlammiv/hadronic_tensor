@@ -1093,7 +1093,9 @@ def analyze(bits_paths, ideal_template: str, out_template: str, ns: int, center:
     components = keep
     fams = sorted({f for c in components for f in COMPONENT_LAYOUT[c][0]} | {"j0"})
     ideals = load_ideal_grids(ideal_template, fams, card=card, expect_ns=ns)
-    surrogate = load_wing_surrogate(wing_surrogate, eta=eta)
+    # the CLI default is a {tag} template; the rehearsal path resolved it per
+    # card, the command path did not (FileNotFoundError on the literal name)
+    surrogate = load_wing_surrogate(wing_path_for(wing_surrogate, card), eta=eta)
     present = {(p["t"], p["dt"]) for j in jobs for p in map(parse_pub_name, j.bits) if p["family"] != "qpdf"}
     if times is not None:
         present = {(t, dt) for t, dt in present if any(abs(t - x) < 1e-9 for x in times)}
