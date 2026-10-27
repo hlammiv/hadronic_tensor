@@ -113,6 +113,24 @@ def test_check_quarter_time_tail_blocks_ns6(tmp_path):
     assert float(z["t"]) == 0.25 and float(z["dt"]) == CP.DT and abs(z["kappa_v"][0][2] - 1.0) < 0.1
 
 
+def test_tail_blocks_survive_a_cached_step(tmp_path):
+    """A cached ISA step comes back from qpy with a rebuilt Parameter object;
+    the tail block must bind by name (the 2026-10-27 acceptance failure:
+    'Cannot bind parameters (t) not present in the circuit' on a cache hit)."""
+    card = C.load_card()
+    lat = Lattice(6)
+    be = T.resolve_backend("grid:4x5")
+    emb = T.choose_embedding(be, 6, 2)
+    kw = dict(basis="cz", cache_dir=str(tmp_path / "cache"), log=None, tails=((0, 0.25), (1, 0.25)))
+    cold = T.transpile_bundle(be, lat, card, emb, (1,), **kw)
+    warm = T.transpile_bundle(be, lat, card, emb, (1,), **kw)       # base and step from the cache
+    for key in ((0, 0.25), (1, 0.25)):
+        assert warm.blocks[key]["mode"] == "composed+tail"
+        assert not warm.blocks[key]["physics"].parameters
+        assert warm.blocks[key]["physics"] == cold.blocks[key]["physics"]
+        assert warm.blocks[key]["mirror"] == cold.blocks[key]["mirror"]
+
+
 def test_append_ideal_rows_keeps_existing_rows(grids6, tmp_path):
     """Quarter-time rows are added to a card's grid without touching its own."""
     import shutil

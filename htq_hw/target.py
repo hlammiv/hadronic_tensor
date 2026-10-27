@@ -1408,14 +1408,20 @@ def tail_block(b: Bundle, be, n: int, tail: float, t=None, fractional: bool | No
                              "the ring's whole-block transpile cannot be extended by one step")
     if not (0 < tail < DT):
         raise ValueError(f"tail step must lie in (0, {DT}); got {tail}")
-    t = t if t is not None else next(iter(b.step.parameters))
+    # bind by NAME, as _make_block does: a cached step comes back from its qpy
+    # round trip with a rebuilt Parameter object, and binding the caller's
+    # object raises "Cannot bind parameters (t) not present in the circuit"
+    # (the 2026-10-27 acceptance failure, which no cache-cold test had seen)
+    if t is None:
+        t = next(iter(b.step.parameters))
+    pname = t if isinstance(t, str) else t.name
     fractional = b.basis == "rzz" if fractional is None else fractional
-    full = C.assign(b.step, t, DT)
-    phys = C.assign(b.step, t, tail)
-    mir = C.assign(b.step, t, eps / (n + 1))
+    full = C.assign(b.step, pname, DT)
+    phys = C.assign(b.step, pname, tail)
+    mir = C.assign(b.step, pname, eps / (n + 1))
     for _ in range(n):
         phys = full.compose(phys)
-        mir = C.assign(b.step, t, eps / (n + 1)).compose(mir)
+        mir = C.assign(b.step, pname, eps / (n + 1)).compose(mir)
     if fractional:
         phys, mir = fold_rzz(phys), fold_rzz(mir)
     n2q = assert_skeleton_equal(phys, mir)

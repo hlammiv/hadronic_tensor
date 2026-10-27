@@ -357,7 +357,10 @@ def run(target: str, presets, ns: int = 50, basis: str = "cz", level: str = "fas
     if "check" in steps and emb is not None:
         from . import sim as S
         try:
-            ct = times if times is not None else [0.0, 0.5]
+            # t = 0 and one full step, plus whatever the rehearsal will sample
+            # (the shortest slice per card: a quarter-time tail if the preset
+            # has one), so the tail blocks are checked before they are run
+            ct = list(times) if times is not None else sorted({0.0, 0.5} | set(_rehearse_times(specs)))
             r = S.check(be, lat, cards, emb, tpl, ct, basis=basis, tol=tol,
                         threads=threads, cache_dir=cache_dir, log=log, specs=specs)
             worst = max(r.values()) if r else 0.0
