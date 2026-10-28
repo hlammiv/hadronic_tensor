@@ -666,8 +666,27 @@ def rehearse(be, lat: Lattice, card, emb: T.Embedding, specs, shots: dict, ideal
     rng = np.random.default_rng(seed)
     noise_t = (rng, float(noise[0]), float(noise[1])) if noise else None
     init_by_fam = {}
+    sims = {lat.n_wires: sim}
     bits = {}
     t0 = time.time()
+
+    def init_for(cname, fam, no_gadget):
+        """Cached prep MPS with the family's logical gadget applied, in chain order."""
+        if (cname, fam) not in init_by_fam:
+            ps = prep_mps(cards[cname], lat, emb.center, cache_dir, cap, threads=threads, log=log)
+            gad = QuantumCircuit(lat.n_wires)
+            if not no_gadget:
+                kind, off = CP.FAMILY_GADGET[fam]
+                gad.h(lat.ancilla)
+                gad.compose(C.insertion_gadget(lat, kind, emb.center + off, "direct"), inplace=True)
+            q0 = QuantumCircuit(lat.n_wires)
+            q0.set_matrix_product_state(ps.mps)
+            routed, fl_g = route_to_chain(gad, ps.perm, lat.n_wires)
+            q0.compose(routed, inplace=True)
+            q0.save_matrix_product_state(label="mps")
+            init_by_fam[(cname, fam)] = (sim.run(q0).result().data()["mps"], fl_g)
+        return init_by_fam[(cname, fam)]
+
     for s in specs:
         qc = pubs[s.name]
         # mirrors share the j0 bundle, except the plain family, whose mirror is
@@ -675,6 +694,34 @@ def rehearse(be, lat: Lattice, card, emb: T.Embedding, specs, shots: dict, ideal
         fam = s.family if s.family == "plain" else ("j0" if s.mirror else s.family)
         cname = s.card or (default_card["name"] if default_card else "")
         card_s = cards[cname]
+        if s.preset == "gauss-midcircuit":
+            # no bundle: the pub is prep + J0 gadget + Trotter steps with
+            # mid-circuit syndrome rounds on a spare-qubit ancilla.  Large
+            # lattices start from the cached prepared-and-inserted MPS (the
+            # gauss base is the j0 base) and run only the steps and rounds;
+            # Aer takes one trajectory per shot when a measurement is not
+            # terminal, so the shot plan keeps these pubs small.
+            # The deferred-measurement form (fresh logical ancilla per check,
+            # no reset) has the same syndrome statistics and lets Aer sample
+            # the final state; the device form costs one trajectory per shot.
+            # The ISA dynamic circuit itself is exercised by the check step.
+            from .gauss import gauss_circuit
+            if big:
+                mps_f, perm_f = init_for(cname, "j0", False)
+                logical = gauss_circuit(lat, card_s, s.n_steps, s.t, emb.center, mirror=s.mirror,
+                                        base=False, defer=True)
+            else:
+                mps_f, perm_f = None, None
+                logical = gauss_circuit(lat, card_s, s.n_steps, s.t, emb.center, mirror=s.mirror, defer=True)
+            nw = logical.num_qubits
+            body = C.readout_layer(logical, lat, list(range(nw)), s.readout, s.anc_basis)
+            if nw not in sims:
+                sims[nw] = make_simulator(nw, cap=cap, threads=threads)
+            arr = sample_bits(sims[nw], body, shots[s.name], mps_f, noise_t,
+                              seed=int(rng.integers(2**31)), n_traj=n_traj, perm=perm_f)
+            bits[s.name] = arr
+            T._log(f"sampled {s.name}: {arr.shape} ({time.time() - t0:.0f}s)", log)
+            continue
         bnd = bundles[(cname, fam)]
         qpdf = s.family == "qpdf"
         # neither a qpdf pub nor a plain-evolution pub carries an ancilla or an
@@ -684,19 +731,7 @@ def rehearse(be, lat: Lattice, card, emb: T.Embedding, specs, shots: dict, ideal
         base_layout = bnd[1] if qpdf else bnd.base_layout
         if big:
             # split: cached prep state + logical gadget, then the ISA block + readout
-            if (cname, fam) not in init_by_fam:
-                ps = prep_mps(card_s, lat, emb.center, cache_dir, cap, threads=threads, log=log)
-                gad = QuantumCircuit(lat.n_wires)
-                if not no_gadget:
-                    kind, off = CP.FAMILY_GADGET[fam]
-                    gad.h(lat.ancilla)
-                    gad.compose(C.insertion_gadget(lat, kind, emb.center + off, "direct"), inplace=True)
-                q0 = QuantumCircuit(lat.n_wires)
-                q0.set_matrix_product_state(ps.mps)
-                routed, fl_g = route_to_chain(gad, ps.perm, lat.n_wires)
-                q0.compose(routed, inplace=True)
-                q0.save_matrix_product_state(label="mps")
-                init_by_fam[(cname, fam)] = (sim.run(q0).result().data()["mps"], fl_g)
+            init_for(cname, fam, no_gadget)
             n = s.n_steps
             if qpdf:
                 body = C.readout_layer(QuantumCircuit(be.num_qubits), lat, base_layout,
@@ -731,6 +766,7 @@ def rehearse(be, lat: Lattice, card, emb: T.Embedding, specs, shots: dict, ideal
     # a composed campaign namespaces its pubs per card, so analyse one card at
     # a time with that card's own prefix, grids and couplings
     slices, presets = {}, {s.card or "": s.preset for s in specs}
+    composed = any(s.card for s in specs)        # 'preset.card:' names -> per-card keys and files
     for cname, cdict in cards.items():
         fams = {s.family for s in specs if (s.card or cname) == cname and s.family != "qpdf"}
         if not fams:
@@ -745,19 +781,24 @@ def rehearse(be, lat: Lattice, card, emb: T.Embedding, specs, shots: dict, ideal
             T._log(f"{cname}: {sorted(fams)} pubs only -> components {comps} "
                    f"(dropped {[c for c in components if c not in comps]})", log)
         # a card can be in several presets (the production packet is in both
-        # prod-bridge and qpdf-scan), so select on the card, not on one preset
-        prefix = CP.name_prefix(presets.get(cname, ""), cname) if len(cards) > 1 else None
-        out_t = os.path.join(out_dir, ("slice_{comp}_t{t:.1f}.npz" if len(cards) == 1
-                                       else f"{cname}_slice_{{comp}}_t{{t:.1f}}.npz"))
+        # prod-bridge and qpdf-scan), so select on the card, not on one preset.
+        # Composed specs carry 'preset.card:' names even when only one card is
+        # present (a single-preset gate, e.g. gauss-midcircuit): select on the
+        # name, not on the number of cards, or the analysis finds no pubs
+        prefixed = any(s.card for s in specs if (s.card or cname) == cname)
+        prefix = CP.name_prefix(presets.get(cname, ""), cname) if prefixed else None
+        out_t = os.path.join(out_dir, (f"{cname}_slice_{{comp}}_t{{t:.1f}}.npz" if composed
+                                       else "slice_{comp}_t{t:.1f}.npz"))
         try:
             got = A.analyze([bits_path], ideal_template, out_t, lat.ns, emb.center,
                             components=comps, eta=cdict["couplings"]["eta"],
                             backend=meta["backend"], log=log, prefix=prefix, card=cname,
-                            select_by_card=len(cards) > 1,
-                            wing_surrogate=A.wing_path_for(wing_surrogate, cname))
+                            select_by_card=prefixed,
+                            wing_surrogate=A.wing_path_for(wing_surrogate, cname),
+                            rounds=any(s.preset == "gauss-midcircuit" for s in specs))
         except ValueError as e:          # e.g. a card with only qpdf pubs
             T._log(f"analyze skipped for {cname}: {e}", log)
             continue
         slices.update({(cname,) + (k if isinstance(k, tuple) else (k,)): v for k, v in got.items()}
-                      if len(cards) > 1 else got)
+                      if composed else got)
     return {"bits": bits_path, "meta": meta_path, "slices": slices, "job_id": meta["job_id"]}

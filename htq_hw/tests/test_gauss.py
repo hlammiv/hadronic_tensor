@@ -152,3 +152,44 @@ def test_analyze_drops_shots_with_a_nontrivial_midcircuit_syndrome(tmp_path):
     assert np.all(np.abs(zp["C_cal"][0] - zr["C_cal"][0]) < 4 * err)
     v = np.argmax(np.abs((zr["C_cal"][0] - zr["id_a"] * zr["id_b"]).real))
     assert abs(zb["C_cal"][0][v] - zr["C_cal"][0][v]) > 4 * err[v]
+
+
+def test_rehearsal_samples_midcircuit_pubs_from_the_cached_state(tmp_path):
+    """The rehearsal had no path for gauss-midcircuit pubs (KeyError on the
+    missing bundle, 28 October 2026).  On a lattice above the statevector
+    limit it now starts the steps and syndrome rounds from the cached
+    prepared-and-inserted MPS, keeps the syndrome columns in the bits, and
+    the analysis with the rounds post-selection reduces the slices with every
+    syndrome trivial on the noiseless simulator."""
+    import glob
+    from htq_hw import campaign as CP
+    card = C.load_card()
+    NS12, CEN = 12, 5
+    lat = Lattice(NS12)
+    assert lat.n_wires > S.STATEVECTOR_MAX_WIRES
+    be = T.resolve_backend("grid:6x8")
+    emb = T.choose_embedding(be, NS12, CEN, mode="ladder", gauss_sites=G.gauss_ancilla_sites(lat, CEN))
+    emb.validate(T.Graph.from_backend(be))
+    tpl = str(tmp_path / "ideal_{family}.npz")
+    S.write_ideal_grids(card, NS12, CEN, ("j0",), [0.0, 1.0], tpl, threads=2)
+    specs = [s for s in CP.manifest(times=(1.0,), families=("j0",), readouts=("Z",),
+                                    card=card["name"], preset="gauss-midcircuit")]
+    assert {s.t for s in specs} == {0.0, 1.0} and all(s.preset == "gauss-midcircuit" for s in specs)
+    shots = {s.name: 120 for s in specs}
+    out = S.rehearse(be, lat, card, emb, specs, shots, tpl, str(tmp_path / "reh"), cache_dir=str(tmp_path / "cache"),
+                     components=("00",), log=None, threads=2)
+    z = np.load(out["bits"], allow_pickle=True)
+    k = len(G.patch_sites(lat, CEN))
+    for s in specs:
+        arr = z[s.name]
+        rounds = G.n_rounds(s.n_steps) if s.n_steps else 1
+        assert arr.shape == (120, lat.n_wires + rounds * k), s.name
+        if rounds:
+            acc = G.acceptance(arr, lat, G.patch_sites(lat, CEN), rounds)
+            assert np.all(acc["per_round"] == 1.0), s.name      # noiseless: every syndrome trivial
+    # composed ('preset.card:') specs key the slices per card, as the gate expects
+    sl = {key: np.load(p, allow_pickle=True) for key, p in out["slices"].items()}
+    c = card["name"]
+    assert (c, "00", 0.0) in sl and (c, "00", 1.0) in sl
+    assert bool(sl[(c, "00", 1.0)]["postselect_rounds"]) and float(sl[(c, "00", 1.0)]["postselect_kept"]) == 1.0
+    assert abs(float(sl[(c, "00", 1.0)]["kappa_v"][0][CEN]) - 1.0) < 0.2

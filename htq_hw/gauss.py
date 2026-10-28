@@ -89,10 +89,11 @@ def relay_copy(qc: QuantumCircuit, lat: Lattice, site: int, chain: list[int], an
 
 
 def syndrome_extraction(qc: QuantumCircuit, lat: Lattice, site: int, anc_wire: int, clbit: int,
-                        chain=()) -> None:
+                        chain=(), reset: bool = True) -> None:
     """One Gauss check of ``site`` onto ``anc_wire`` (adjacent to the last site
     of ``chain``, or to ``site`` itself when the chain is empty), measured
-    into ``clbit`` and reset."""
+    into ``clbit`` and reset (``reset=False``: a fresh ancilla per check, the
+    deferred-measurement form the rehearsal samples)."""
     n, n1 = lat.site_qubit(site), lat.site_qubit(site + 1)
     lm, lp = lat.link_qubit(site - 1), lat.link_qubit(site)
     qc.h(lm)
@@ -106,7 +107,8 @@ def syndrome_extraction(qc: QuantumCircuit, lat: Lattice, site: int, anc_wire: i
     qc.h(lm)
     qc.h(lp)
     qc.measure(anc_wire, clbit)
-    qc.reset(anc_wire)
+    if reset:
+        qc.reset(anc_wire)
 
 
 def n_rounds(n_steps: int) -> int:
@@ -114,20 +116,29 @@ def n_rounds(n_steps: int) -> int:
 
 
 def gauss_circuit(lat: Lattice, card: dict, n_steps: int, t: float, center: int = CENTER,
-                  mirror: bool = False, sites=None, n_extra_wires: int | None = None) -> QuantumCircuit:
+                  mirror: bool = False, sites=None, n_extra_wires: int | None = None,
+                  base: bool = True, defer: bool = False) -> QuantumCircuit:
     """Logical circuit: base (prep + h(anc) + J0 gadget) + Trotter steps with a
     syndrome round after every STEPS_PER_ROUND steps (+ a final round at t = 0
     for the reference).  Ancilla wires 2Ns+1.., syndrome clbits from n_wires
-    on; the system/ancilla readout is added later by readout_layer."""
+    on; the system/ancilla readout is added later by readout_layer.
+    ``base=False`` leaves the base out (the rehearsal starts the steps and
+    syndrome rounds from the cached prepared-and-inserted MPS instead).
+    ``defer=True`` is the deferred-measurement form for simulation only: one
+    fresh logical ancilla per (round, check), wires n_wires.., no reset and
+    no relay, so every measurement is terminal and Aer samples the final
+    state instead of running one trajectory per shot (5 s a shot at
+    Ns = 12).  Same syndrome clbits and statistics as the device circuit."""
     sites = list(sites or patch_sites(lat, center))
     k = len(sites)
     anc_sites = gauss_ancilla_sites(lat, center)             # spare-qubit ancillas, wires n_wires + j
     anc_wire = {x: lat.n_wires + j for j, x in enumerate(anc_sites)}
     plan = relay_plan(lat, center)
     rounds = n_rounds(n_steps) if n_steps else 1
-    n_wires = lat.n_wires + len(anc_sites)
+    n_wires = lat.n_wires + (rounds * k if defer else len(anc_sites))
     qc = QuantumCircuit(n_wires, lat.n_wires + rounds * k)
-    qc.compose(C.base_circuit(lat, card, "J0", center=center, accumulate="ladder"), range(lat.n_wires), inplace=True)
+    if base:
+        qc.compose(C.base_circuit(lat, card, "J0", center=center, accumulate="ladder"), range(lat.n_wires), inplace=True)
     dt = (t / n_steps) if n_steps else DT
     eps_dt = 1e-8 / n_steps if n_steps else 0.0
     done = 0
@@ -138,6 +149,9 @@ def gauss_circuit(lat: Lattice, card: dict, n_steps: int, t: float, center: int 
                 qc.compose(blk, range(lat.n_qubits), inplace=True)
                 done += 1
         for j, site in enumerate(sites):
+            if defer:
+                syndrome_extraction(qc, lat, site, lat.n_wires + r * k + j, lat.n_wires + r * k + j, reset=False)
+                continue
             a_site, chain = plan[site]
             syndrome_extraction(qc, lat, site, anc_wire[a_site], lat.n_wires + r * k + j, chain=chain)
     while done < n_steps:                                   # leftover steps (odd n)
