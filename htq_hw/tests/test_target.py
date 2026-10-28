@@ -313,3 +313,20 @@ def test_cli_parses_excluded_couplers():
     b = argparse.Namespace(exclude_qubits=["17", 62], exclude_edges=["68-77"])
     assert _excluded_qubits(b) == (17, 62) and _excluded_edges(b) == ((68, 77),)
     assert _excluded_qubits(argparse.Namespace()) == () and _excluded_edges(argparse.Namespace()) == ()
+
+
+def test_graph_search_ladder_carries_the_gauss_ancilla_like_the_template():
+    """With qubits excluded the template ladder no longer fits and the graph
+    search takes over; it must hand back the gauss-midcircuit ancilla in the
+    same form as the template path (wire 2Ns+1, info site -> wire), or the
+    acceptance gate dies in validate with 'layout length' (28 October 2026)."""
+    from htq_hw import gauss as G
+    be = T.resolve_backend("fake:nighthawk")
+    g, _ = T.operational_graph(be, exclude_qubits=(17, 62, 77))
+    lat = Lattice(50)
+    emb = T.choose_embedding(be, 50, 24, mode="auto", graph=g, log=None,
+                             gauss_sites=G.gauss_ancilla_sites(lat, 24))
+    emb.validate(g)
+    assert emb.kind == "ladder" and emb.info["source"] == "graph-search"
+    assert len(emb.layout) == 102 and emb.info["gauss_ancillas"] == {25: 101}
+    assert g.has_edge(emb.layout[2 * 25], emb.layout[101]) and not ({17, 62, 77} & set(emb.layout))

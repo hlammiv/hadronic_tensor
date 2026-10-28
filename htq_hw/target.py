@@ -966,7 +966,10 @@ def search_ladder(g: Graph, ns: int, center: int = CENTER, gauss_sites=None, bea
             e = _ladder_embedding(cyc, pend, ancs[0], k, ns, center,
                                   info={"source": "graph-search", "rot": k})
             if gs:
-                e.info["gauss_ancillas"] = ancs[1:]
+                # same contract as Embedding.with_gauss_ancillas: the extra
+                # ancillas are wires 2Ns+1.. and info maps site -> wire
+                e.layout = list(e.layout) + [int(q) for q in ancs[1:]]
+                e.info["gauss_ancillas"] = {int(n): 2 * ns + 1 + j for j, n in enumerate(gs)}
             out.append(e)
             if len(out) >= max_embeddings:
                 return out
