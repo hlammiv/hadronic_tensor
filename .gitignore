@@ -43,3 +43,7 @@ notes/feedback/
 data/work/
 paper/annotations/
 *.xml
+
+# raw per-shot hardware bits and vendor drops (hundreds of MB, public repo)
+ibm_data/
+data/hw/runs/*/*/raw/
