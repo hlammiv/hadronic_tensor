@@ -409,7 +409,7 @@ def cmd_analyze(args):
     A.analyze(args.bits, _ideal_template(args), args.out, args.ns, center, args.times, args.components,
               card["couplings"]["eta"], args.backend, log=log, prefix=prefix, card=args.card,
               select_by_card=args.by_card, wing_surrogate=args.wing_surrogate,
-              im=args.im)
+              im=args.im, postselect=args.postselect)
 
 
 def cmd_acceptance(args):
@@ -657,6 +657,10 @@ def main(argv=None):
     an.add_argument("--wing-surrogate", default=C.ref_path("wing_surrogate_{tag}.npz"), metavar="NPZ",
                     help="wing-anchor target for slices whose ideal grid stops short "
                          "(scripts/wing_surrogate.py build)")
+    an.add_argument("--postselect", type=int, default=0, metavar="W",
+                    help="Gauss-law post-selection: keep only the shots on which the 2W+1 checks "
+                         "around the insertion all pass, in every Z-setting pub (physics, mirror, "
+                         "plain, reference) before the estimators; 0 = off.  XY pubs are unfiltered")
     an.add_argument("--qpdf", action="store_true",
                     help="reduce the qpdf-scan bilinears instead of the W slices: "
                          "connected h(m) -> q(x) -> <x> per card")

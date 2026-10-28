@@ -477,14 +477,51 @@ def rebuild_C(anc, b_cal, id_a, id_b, A0):
     return anc + id_a * (b_cal - id_b) + id_b * (A0 - id_a) + id_a * id_b
 
 
+# ------------------------------------------------------------------ Gauss-law post-selection
+def gauss_checks(lat: Lattice, center: int, window: int) -> list[int]:
+    """The Gauss checks imposed at ``window``, nearest the insertion first
+    (ring distance, so the seam is an ordinary neighbour): window 0 imposes
+    nothing, window w imposes the 2w + 1 checks center - w .. center + w.
+    Mirrors htensor.postselect.check_ranking."""
+    if window <= 0:
+        return []
+    ns = lat.ns
+    return [(center + d) % ns for r in range(window + 1) for d in ((0,) if r == 0 else (-r, r))]
+
+
+def gauss_keep_mask(bits, lat: Lattice, center: int, window: int) -> np.ndarray:
+    """Shots of a Z-setting pub (matter Z, links X) on which every imposed
+    Gauss check G_n = (-1)^n Z_n X_{l-} X_{l+} reads +1.  The checks are the
+    stabilisers of the [[2 ns, ns, 1]] Gauss-law code and come free with the
+    readout; a shot that fails one has left the gauge sector by the end of
+    the circuit.  Same formula as the ``gauss`` estimator above and as
+    htensor.postselect.keep_mask; window 0 keeps everything."""
+    b = np.asarray(bits)
+    keep = np.ones(len(b), bool)
+    for n in gauss_checks(lat, center, window):
+        g = ((1 - 2 * b[:, lat.site_qubit(n)].astype(np.int8))
+             * (1 - 2 * b[:, lat.link_qubit((n - 1) % lat.ns)].astype(np.int8))
+             * (1 - 2 * b[:, lat.link_qubit(n)].astype(np.int8)))
+        keep &= ((-1) ** n * g) > 0
+    return keep
+
+
 class JobBits:
     """One job's bit arrays (name -> (shots, n_logical) uint8) and estimator cache."""
 
-    def __init__(self, bits: dict, lat: Lattice, job_id: str = "", eta: float = ETA):
+    def __init__(self, bits: dict, lat: Lattice, job_id: str = "", eta: float = ETA,
+                 postselect: int = 0, center: int | None = None):
         self.bits = bits
         self.lat = lat
         self.job_id = job_id
         self.eta = eta
+        # Gauss post-selection: window > 0 drops, from every Z-setting pub
+        # before its estimators are formed, the shots failing the 2w + 1
+        # checks around ``center`` (gauss_keep_mask).  XY-setting pubs read
+        # the links in Z and carry no checks, so they are never filtered.
+        self.postselect = int(postselect)
+        self.center = lat.ns // 2 - 1 if center is None else int(center)
+        self.kept = {}            # Z pub -> (kept, total) once estimated under a window
         self._cache = {}
 
     def has(self, name: str) -> bool:
@@ -492,8 +529,21 @@ class JobBits:
 
     def est(self, name: str, setting: str) -> dict:
         if name not in self._cache:
-            self._cache[name] = estimate_probes(self.bits[name], self.lat, setting, self.eta)
+            b = self.bits[name]
+            if self.postselect > 0 and setting == "Z":
+                keep = gauss_keep_mask(b, self.lat, self.center, self.postselect)
+                self.kept[name] = (int(keep.sum()), int(len(b)))
+                if not keep.any():
+                    raise ValueError(f"{self.job_id}:{name}: no shot passes the window-"
+                                     f"{self.postselect} Gauss checks")
+                b = b[keep]
+            self._cache[name] = estimate_probes(b, self.lat, setting, self.eta)
         return self._cache[name]
+
+    def kept_fraction(self, names) -> float:
+        """Kept / total over the named Z pubs already estimated (nan if none)."""
+        rows = [self.kept[n] for n in names if n in self.kept]
+        return float(sum(k for k, _ in rows) / sum(n for _, n in rows)) if rows else float("nan")
 
     def mirror_name(self, t: float, readout: str, anc: str, family: str = "j0",
                     dt: float = DT) -> str | None:
@@ -950,6 +1000,20 @@ def component_slice(comp: str, t: float, jobs: list[JobBits], ideals: dict, lat:
                source for s in per_job for source in (s["jobs"] if "jobs" in s else [s["job"]])))),
            "component": comp, "t": float(t), "A0": float(np.real(A0)),
            "mask": (kap < KAP_MASK)[None, :]}
+    if any(j.postselect for j in jobs):
+        w = max(j.postselect for j in jobs)
+        out["postselect_window"] = int(w)
+        # kept fractions of the physics pubs and of the mirrors that
+        # calibrate them, over the jobs that built this slice; a J1 slice's
+        # own XY pubs are unfiltered, so only its (j0) mirror is reported
+        phys = [pub_name(f, t, False, "Z", anc, dt) for f in fams] if probe == "J0" else []
+        mirr = [m for j in jobs for m in (j.mirror_name(t, "Z", anc, f, dt) for f in fams) if m]
+        rows = [j.kept[n] for j in jobs for n in phys if n in j.kept]
+        out["postselect_kept"] = (float(sum(k for k, _ in rows) / sum(n for _, n in rows))
+                                  if rows else float("nan"))
+        rows = [j.kept[n] for j in jobs for n in set(mirr) if n in j.kept]
+        out["postselect_kept_mirror"] = (float(sum(k for k, _ in rows) / sum(n for _, n in rows))
+                                         if rows else float("nan"))
     if anc_im is not None:
         # C_err is the error on Re C_cal; the imaginary part carries no
         # probe one-point term, so its error is the ancilla signal's alone.
@@ -1027,7 +1091,7 @@ def card_of(prefix: str) -> str:
 
 
 def load_job_bits(bits_path: str, lat: Lattice, eta: float = ETA, prefix: str | None = None,
-                  card: str | None = None) -> JobBits:
+                  card: str | None = None, postselect: int = 0, center: int | None = None) -> JobBits:
     """data/hw/htq_bits_<id>.npz -> JobBits (pub arrays only; meta keys skipped).
 
     ``prefix`` ('preset.card:' from campaign.name_prefix) keeps exactly that
@@ -1046,14 +1110,14 @@ def load_job_bits(bits_path: str, lat: Lattice, eta: float = ETA, prefix: str | 
         if keep:
             bits[bare] = z[k]
     job_id = str(z["job_id"]) if "job_id" in z.files else os.path.basename(bits_path)
-    return JobBits(bits, lat, job_id, eta)
+    return JobBits(bits, lat, job_id, eta, postselect=postselect, center=center)
 
 
 def analyze(bits_paths, ideal_template: str, out_template: str, ns: int, center: int,
             times=None, components=COMPONENTS, eta: float = ETA, backend: str = "",
             anc: str = "X", wing: bool = True, log=print, prefix: str | None = None,
             card: str | None = None, wing_surrogate: str | None = None,
-            select_by_card: bool = False, im: bool | None = None) -> dict:
+            select_by_card: bool = False, im: bool | None = None, postselect: int = 0) -> dict:
     """Bits files (one per job) -> slice npz files.  -> {(comp, t): path}.
     ``prefix`` selects one preset/card of a composed campaign, or
     ``select_by_card`` selects every pub of ``card`` whatever preset it came
@@ -1063,10 +1127,20 @@ def analyze(bits_paths, ideal_template: str, out_template: str, ns: int, center:
     ``im`` reduces the Y-ancilla pubs into the imaginary part of ``C_cal``.
     The default, None, lets the data decide: on when any Y pub is present,
     off otherwise, so an imaginary tier is reduced correctly without anyone
-    having to remember a flag and older bits analyse exactly as before."""
+    having to remember a flag and older bits analyse exactly as before.
+
+    ``postselect`` > 0 keeps, in every Z-setting pub, only the shots on which
+    the 2w + 1 Gauss checks around ``center`` all read +1 (gauss_keep_mask)
+    before any estimator is formed: physics, mirror, plain and reference
+    alike, so kappa and beta are measured on the same selected ensemble as
+    the signal.  The slice records the window and the kept fractions."""
     lat = Lattice(ns)
     by_card = card if (card and select_by_card) else None
-    jobs = [load_job_bits(p, lat, eta, prefix, card=by_card) for p in bits_paths]
+    jobs = [load_job_bits(p, lat, eta, prefix, card=by_card, postselect=postselect, center=center)
+            for p in bits_paths]
+    if postselect:
+        _log(f"Gauss post-selection: window {postselect} ({2 * postselect + 1} checks around site "
+             f"{center}) on every Z-setting pub; XY pubs carry no checks and are unfiltered", log)
     jobs = [j for j in jobs if j.bits]
     if not jobs:
         avail = available_prefixes(bits_paths)
@@ -1118,6 +1192,8 @@ def analyze(bits_paths, ideal_template: str, out_template: str, ns: int, center:
                     f"{np.median(sl['C_err'][0][ok]) if ok.any() else np.nan:.4f}, "
                     + (f"median Im err {np.median(sl['C_err_im'][0][ok]):.4f}, "
                        if "C_err_im" in sl and ok.any() else "")
+                    + (f"kept {sl['postselect_kept']:.3f} (mirror {sl['postselect_kept_mirror']:.3f}), "
+                       if "postselect_window" in sl else "")
                     + f"nshot {sl['nshot']} -> {path}")
     return written
 

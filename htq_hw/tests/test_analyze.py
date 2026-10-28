@@ -982,3 +982,87 @@ def test_dither_insertion_site_takes_the_j0_insertion_sites_kappa():
     assert rd["var"][site] > r0["var"][site] * (kap_true[site] / kap_true[CENTER]) ** 2   # model error added
     others = np.arange(NS) != site
     np.testing.assert_allclose(rd["anc_cal"][others], r0["anc_cal"][others])
+
+
+# ------------------------------------------------------------------ Gauss post-selection
+def _physical_shots(lat, shots):
+    """The staggered vacuum bit string, on which every Gauss check reads +1:
+    matter bit b_n = (1 - (-1)^n) / 2, every link bit 0, ancilla 0."""
+    b = np.zeros((shots, lat.n_wires), np.uint8)
+    for n in range(lat.ns):
+        b[:, lat.site_qubit(n)] = (1 - (-1) ** n) // 2
+    return b
+
+
+def test_gauss_keep_mask_ranks_the_checks_by_distance_from_the_insertion():
+    lat = Lattice(NS)
+    b = _physical_shots(lat, 8)
+    assert A.gauss_keep_mask(b, lat, CENTER, 0).all() and A.gauss_keep_mask(b, lat, CENTER, 2).all()
+    near, far = b.copy(), b.copy()
+    near[:4, lat.link_qubit(CENTER)] ^= 1            # link (c, c+1): in G_c and G_{c+1}
+    far[:4, lat.link_qubit(CENTER + 2)] ^= 1         # link (c+2, c+3): outside window 1
+    assert A.gauss_keep_mask(near, lat, CENTER, 0).all()
+    assert list(A.gauss_keep_mask(near, lat, CENTER, 1)) == [False] * 4 + [True] * 4
+    assert A.gauss_keep_mask(far, lat, CENTER, 1).all()
+    assert list(A.gauss_keep_mask(far, lat, CENTER, 2)) == [False] * 4 + [True] * 4
+    assert A.gauss_checks(lat, CENTER, 2) == [CENTER, CENTER - 1, CENTER + 1, CENTER - 2, CENTER + 2]
+    # the same mask the kingston analysis used, when htensor is around
+    try:
+        from htensor import Z2Lattice, postselect as PS
+    except ImportError:
+        return
+    rng = np.random.default_rng(1)
+    r = rng.integers(0, 2, (500, lat.n_wires)).astype(np.uint8)
+    for w in (1, 2):
+        assert (A.gauss_keep_mask(r, lat, CENTER, w)
+                == PS.keep_mask(r[:, :2 * NS].astype(np.int8), Z2Lattice(NS, pbc=True), CENTER, w)).all()
+
+
+def test_postselect_drops_the_shots_that_fail_the_checks_and_records_the_kept_fraction(setup, tmp_path):
+    """30% of the shots of every Z-setting pub are taken out of the gauge
+    sector (the link next to the insertion flipped) and stripped of their
+    ancilla signal.  Window 1 must drop exactly those shots, so the t = 0
+    reference, which is raw, lands back on the clean reduction, while the
+    unfiltered reduction is damped; XY pubs carry no checks and are left
+    alone."""
+    card, lat, tpl = setup
+    eta = card["couplings"]["eta"]
+    specs = CP.manifest(times=(0.0, 0.5), families=("j0",))
+    shots = 4000
+    clean = _synthetic_bits(card, lat, specs, {"Z": 0.8, "XYA": 0.6, "XYB": 0.6}, shots, seed=11)
+    rng = np.random.default_rng(2)
+    bad = {}
+    for name, arr in clean.items():
+        arr = arr.copy()
+        if CP.parse_pub_name(name)["readout"] == "Z":
+            rows = rng.random(shots) < 0.3
+            arr[rows, lat.link_qubit(CENTER)] ^= 1
+            arr[rows, lat.ancilla] = rng.integers(0, 2, int(rows.sum()))
+        bad[name] = arr
+
+    def run(bits, tag, w):
+        path = str(tmp_path / f"htq_bits_{tag}.npz")
+        np.savez_compressed(path, job_id=tag, backend="synthetic", pub_names=np.array(list(bits)), **bits)
+        return A.analyze([path], tpl, str(tmp_path / f"{tag}_w{w}_{{comp}}_t{{t:.1f}}.npz"), NS, CENTER,
+                         eta=eta, components=("00", "10"), log=None, postselect=w)
+
+    ref, raw, ps = run(clean, "clean", 0), run(bad, "bad", 0), run(bad, "bad", 1)
+    for key in ref:
+        zr, zb, zp = (np.load(d[key], allow_pickle=True) for d in (ref, raw, ps))
+        assert "postselect_window" not in zr.files and "postselect_window" not in zb.files
+        assert int(zp["postselect_window"]) == 1
+        comp = key[0]
+        if comp == "00":
+            assert abs(float(zp["postselect_kept"]) - 0.7) < 0.03
+            assert int(zb["nshot"]) == shots and 0.65 * shots < int(zp["nshot"]) < 0.75 * shots
+        else:                                   # XY physics unfiltered; its j0 mirror is
+            assert np.isnan(float(zp["postselect_kept"]))
+            assert int(zp["nshot"]) == shots
+        # at t = 0 the physics pub is its own reference and there is no mirror
+        assert np.isfinite(float(zp["postselect_kept_mirror"])) == (key[1] > 0)
+    # the raw t = 0 reference: post-selected lands on clean, unfiltered does not
+    zr, zb, zp = (np.load(d[("00", 0.0)], allow_pickle=True) for d in (ref, raw, ps))
+    err = np.hypot(zr["C_err"][0], zp["C_err"][0])
+    assert np.all(np.abs(zp["C_cal"][0] - zr["C_cal"][0]) < 4 * err)
+    v = np.argmax(np.abs((zr["C_cal"][0] - zr["id_a"] * zr["id_b"]).real))
+    assert abs(zb["C_cal"][0][v] - zr["C_cal"][0][v]) > 4 * err[v]
