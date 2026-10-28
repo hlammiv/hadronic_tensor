@@ -510,7 +510,7 @@ class JobBits:
     """One job's bit arrays (name -> (shots, n_logical) uint8) and estimator cache."""
 
     def __init__(self, bits: dict, lat: Lattice, job_id: str = "", eta: float = ETA,
-                 postselect: int = 0, center: int | None = None):
+                 postselect: int = 0, center: int | None = None, rounds: bool = False):
         self.bits = bits
         self.lat = lat
         self.job_id = job_id
@@ -521,21 +521,45 @@ class JobBits:
         # the links in Z and carry no checks, so they are never filtered.
         self.postselect = int(postselect)
         self.center = lat.ns // 2 - 1 if center is None else int(center)
+        # ``rounds``: a pub of the gauss-midcircuit preset carries, beyond the
+        # system and ancilla columns, the five patch syndromes of every
+        # mid-circuit extraction round; with ``rounds`` on, shots with any
+        # non-trivial syndrome are dropped as well (gauss.acceptance), and the
+        # cumulative acceptance per round is kept for the slice.
+        self.rounds = bool(rounds)
         self.kept = {}            # Z pub -> (kept, total) once estimated under a window
+        self.per_round = {}       # pub -> cumulative acceptance after each syndrome round
         self._cache = {}
 
     def has(self, name: str) -> bool:
         return name in self.bits
 
+    def syndrome_rounds(self, name: str) -> int:
+        """Mid-circuit syndrome rounds a pub carries (columns beyond the wires)."""
+        from .gauss import patch_sites
+        extra = self.bits[name].shape[1] - self.lat.n_wires
+        k = len(patch_sites(self.lat, self.center))
+        return extra // k if extra > 0 and extra % k == 0 else 0
+
     def est(self, name: str, setting: str) -> dict:
         if name not in self._cache:
             b = self.bits[name]
+            keep = np.ones(len(b), bool)
+            filtered = False
             if self.postselect > 0 and setting == "Z":
-                keep = gauss_keep_mask(b, self.lat, self.center, self.postselect)
+                keep &= gauss_keep_mask(b, self.lat, self.center, self.postselect)
+                filtered = True
+            if self.rounds and setting == "Z" and self.syndrome_rounds(name):
+                from .gauss import acceptance, patch_sites
+                acc = acceptance(b, self.lat, patch_sites(self.lat, self.center), self.syndrome_rounds(name))
+                self.per_round[name] = np.asarray(acc["per_round"], float)
+                keep &= acc["accepted"]
+                filtered = True
+            if filtered:
                 self.kept[name] = (int(keep.sum()), int(len(b)))
                 if not keep.any():
-                    raise ValueError(f"{self.job_id}:{name}: no shot passes the window-"
-                                     f"{self.postselect} Gauss checks")
+                    raise ValueError(f"{self.job_id}:{name}: no shot passes the Gauss checks "
+                                     f"(window {self.postselect}, rounds {self.rounds})")
                 b = b[keep]
             self._cache[name] = estimate_probes(b, self.lat, setting, self.eta)
         return self._cache[name]
@@ -1000,9 +1024,17 @@ def component_slice(comp: str, t: float, jobs: list[JobBits], ideals: dict, lat:
                source for s in per_job for source in (s["jobs"] if "jobs" in s else [s["job"]])))),
            "component": comp, "t": float(t), "A0": float(np.real(A0)),
            "mask": (kap < KAP_MASK)[None, :]}
-    if any(j.postselect for j in jobs):
+    if any(j.rounds and j.per_round for j in jobs):
+        # cumulative acceptance per mid-circuit round of this slice's physics
+        # pubs (gauss-midcircuit preset), averaged over the jobs carrying them
+        names = [pub_name(f, t, False, "Z", anc, dt) for f in fams]
+        rows = [j.per_round[n] for j in jobs for n in names if n in j.per_round]
+        if rows:
+            out["midcircuit_per_round"] = np.mean(rows, 0)
+    if any(j.postselect or j.rounds for j in jobs):
         w = max(j.postselect for j in jobs)
         out["postselect_window"] = int(w)
+        out["postselect_rounds"] = bool(any(j.rounds for j in jobs))
         # kept fractions of the physics pubs and of the mirrors that
         # calibrate them, over the jobs that built this slice; a J1 slice's
         # own XY pubs are unfiltered, so only its (j0) mirror is reported
@@ -1091,7 +1123,8 @@ def card_of(prefix: str) -> str:
 
 
 def load_job_bits(bits_path: str, lat: Lattice, eta: float = ETA, prefix: str | None = None,
-                  card: str | None = None, postselect: int = 0, center: int | None = None) -> JobBits:
+                  card: str | None = None, postselect: int = 0, center: int | None = None,
+                  rounds: bool = False) -> JobBits:
     """data/hw/htq_bits_<id>.npz -> JobBits (pub arrays only; meta keys skipped).
 
     ``prefix`` ('preset.card:' from campaign.name_prefix) keeps exactly that
@@ -1110,14 +1143,15 @@ def load_job_bits(bits_path: str, lat: Lattice, eta: float = ETA, prefix: str | 
         if keep:
             bits[bare] = z[k]
     job_id = str(z["job_id"]) if "job_id" in z.files else os.path.basename(bits_path)
-    return JobBits(bits, lat, job_id, eta, postselect=postselect, center=center)
+    return JobBits(bits, lat, job_id, eta, postselect=postselect, center=center, rounds=rounds)
 
 
 def analyze(bits_paths, ideal_template: str, out_template: str, ns: int, center: int,
             times=None, components=COMPONENTS, eta: float = ETA, backend: str = "",
             anc: str = "X", wing: bool = True, log=print, prefix: str | None = None,
             card: str | None = None, wing_surrogate: str | None = None,
-            select_by_card: bool = False, im: bool | None = None, postselect: int = 0) -> dict:
+            select_by_card: bool = False, im: bool | None = None, postselect: int = 0,
+            rounds: bool = False) -> dict:
     """Bits files (one per job) -> slice npz files.  -> {(comp, t): path}.
     ``prefix`` selects one preset/card of a composed campaign, or
     ``select_by_card`` selects every pub of ``card`` whatever preset it came
@@ -1136,8 +1170,11 @@ def analyze(bits_paths, ideal_template: str, out_template: str, ns: int, center:
     the signal.  The slice records the window and the kept fractions."""
     lat = Lattice(ns)
     by_card = card if (card and select_by_card) else None
-    jobs = [load_job_bits(p, lat, eta, prefix, card=by_card, postselect=postselect, center=center)
-            for p in bits_paths]
+    jobs = [load_job_bits(p, lat, eta, prefix, card=by_card, postselect=postselect, center=center,
+                          rounds=rounds) for p in bits_paths]
+    if rounds:
+        _log("mid-circuit syndromes: shots with any non-trivial patch syndrome dropped "
+             "(gauss-midcircuit pubs only; others unaffected)", log)
     if postselect:
         _log(f"Gauss post-selection: window {postselect} ({2 * postselect + 1} checks around site "
              f"{center}) on every Z-setting pub; XY pubs carry no checks and are unfiltered", log)

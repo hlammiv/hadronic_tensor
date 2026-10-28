@@ -101,3 +101,54 @@ def test_local_mode_dynamic_circuit_small_grid():
     assert arr.shape == (40, lat.n_wires + 5)
     acc = G.acceptance(arr, lat, G.patch_sites(lat, center), 1)
     assert acc["per_round"][0] == 1.0
+
+
+def test_analyze_drops_shots_with_a_nontrivial_midcircuit_syndrome(tmp_path):
+    """gauss-midcircuit pubs carry the patch syndromes of every extraction
+    round beyond the system columns.  Without --postselect-rounds the reducer
+    ignores those columns; with it, shots with any non-trivial syndrome are
+    dropped before the estimators and the slice records the acceptance per
+    round.  30% of the shots get a flipped syndrome and a randomised ancilla:
+    the raw t = 0 reference must land back on the clean reduction."""
+    from htq_hw import campaign as CP
+    card = C.load_card()
+    NS6, CEN = 6, 2
+    lat = Lattice(NS6)
+    tpl = str(tmp_path / "ideal_{family}.npz")
+    S.write_ideal_grids(card, NS6, CEN, ("j0",), [0.0, 1.0], tpl, threads=2)
+    sim = S.make_simulator(lat.n_wires + 1)
+    rng = np.random.default_rng(4)
+    shots = 3000
+    circuits = {CP.pub_name("j0", 0.0, False, "Z", "X"): G.gauss_circuit(lat, card, 0, 0.0, CEN),
+                CP.pub_name("j0", 1.0, False, "Z", "X"): G.gauss_circuit(lat, card, 2, 1.0, CEN),
+                CP.pub_name("j0", 1.0, True, "Z", "X"): G.gauss_circuit(lat, card, 2, 1.0, CEN, mirror=True)}
+    clean, bad = {}, {}
+    for name, qc in circuits.items():
+        full = C.readout_layer(qc, lat, list(range(lat.n_wires)), "Z")
+        arr = S.sample_bits(sim, full, shots, seed=int(rng.integers(2**31)))
+        assert arr.shape[1] == lat.n_wires + 5                      # one syndrome round each
+        clean[name] = arr
+        b = arr.copy()
+        rows = rng.random(shots) < 0.3
+        b[rows, lat.n_wires + 1] ^= 1                                # one patch check flipped
+        b[rows, lat.ancilla] = rng.integers(0, 2, int(rows.sum()))
+        bad[name] = b
+
+    def run(bits, tag, rounds):
+        path = str(tmp_path / f"htq_bits_{tag}.npz")
+        np.savez_compressed(path, job_id=tag, backend="synthetic", pub_names=np.array(list(bits)), **bits)
+        return A.analyze([path], tpl, str(tmp_path / f"{tag}_{int(rounds)}_{{comp}}_t{{t:.1f}}.npz"),
+                         NS6, CEN, components=("00",), log=None, rounds=rounds)
+
+    ref, raw, ps = run(clean, "clean", False), run(bad, "bad", False), run(bad, "bad", True)
+    for key in ref:
+        zr, zb, zp = (np.load(d[key], allow_pickle=True) for d in (ref, raw, ps))
+        assert "midcircuit_per_round" not in zb.files and int(zb["nshot"]) == shots
+        assert bool(zp["postselect_rounds"]) and int(zp["postselect_window"]) == 0
+        assert abs(float(zp["postselect_kept"]) - 0.7) < 0.03
+        assert zp["midcircuit_per_round"].shape == (1,) and abs(float(zp["midcircuit_per_round"][0]) - 0.7) < 0.03
+    zr, zb, zp = (np.load(d[("00", 0.0)], allow_pickle=True) for d in (ref, raw, ps))
+    err = np.hypot(zr["C_err"][0], zp["C_err"][0])
+    assert np.all(np.abs(zp["C_cal"][0] - zr["C_cal"][0]) < 4 * err)
+    v = np.argmax(np.abs((zr["C_cal"][0] - zr["id_a"] * zr["id_b"]).real))
+    assert abs(zb["C_cal"][0][v] - zr["C_cal"][0][v]) > 4 * err[v]

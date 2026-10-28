@@ -286,3 +286,30 @@ def test_cycle_search_is_bounded_by_work_not_wall_clock():
     assert rep2["expansions"] == rep["expansions"]        # same work every run
     full = T.choose_embedding(be, 50, 24, mode="auto", graph=g, log=None)
     assert full.kind == "ladder" and full.info["search"]["stopped_by"] != "time_budget"
+
+
+def test_requested_exclusions_reach_the_embedding():
+    """The 2026-10-06 phoenix ladder put logical sites 16 and 48 on physical
+    qubits 17 and 62 (beta = 0.003 at every time: dead) and the link (26, 27)
+    on qubit 77 (Gauss checks at both ends read 0.38 against 0.7).  Excluding
+    them must keep a redundancy >= 2 ladder off those qubits and off any
+    coupler excluded by request."""
+    be = T.resolve_backend("fake:nighthawk")
+    g, rep = T.operational_graph(be, exclude_qubits=(17, 62, 77), exclude_edges=((68, 77),))
+    assert rep["dropped_qubits"] == [17, 62, 77] and (68, 77) in rep["dropped_edges"]
+    assert all(v not in g.adj[u] for u, v in [(68, 77), (77, 68)]) and not g.adj[17]
+    emb = T.choose_embedding(be, 50, 24, mode="auto", graph=g, log=None)
+    assert emb.kind == "ladder" and emb.info["redundancy"] >= 2
+    assert not ({17, 62, 77} & set(emb.layout))
+    plain = T.choose_embedding(be, 50, 24, mode="auto", log=None)
+    assert {17, 62, 77} & set(plain.layout)          # the pristine ladder did use them
+
+
+def test_cli_parses_excluded_couplers():
+    from htq_hw.__main__ import _excluded_edges, _excluded_qubits
+    import argparse
+    a = argparse.Namespace(exclude_qubits="17,62", exclude_edges="68-77,77-78")
+    assert _excluded_qubits(a) == (17, 62) and _excluded_edges(a) == ((68, 77), (77, 78))
+    b = argparse.Namespace(exclude_qubits=["17", 62], exclude_edges=["68-77"])
+    assert _excluded_qubits(b) == (17, 62) and _excluded_edges(b) == ((68, 77),)
+    assert _excluded_qubits(argparse.Namespace()) == () and _excluded_edges(argparse.Namespace()) == ()

@@ -200,7 +200,7 @@ def run(target: str, presets, ns: int = 50, basis: str = "cz", level: str = "fas
         rehearse_shots: int = 8000, qpdf_shots: int = 4000, vac_shot_factor: int = 2,
         kappa_tol: float = 0.25,
         refs: str = "data/qpdf_card_refs.npz", keep_rehearsal: str | None = None,
-        log=print) -> dict:
+        log=print, exclude_qubits=(), exclude_edges=()) -> dict:
     """-> the record dict (also the return value of the CLI)."""
     res, t0 = Result(), time.time()
     steps = STEPS_FULL if level == "full" else STEPS_FAST
@@ -246,13 +246,19 @@ def run(target: str, presets, ns: int = 50, basis: str = "cz", level: str = "fas
     lat = Lattice(ns)
     emb = None
     try:
-        graph, greport = T.operational_graph(be, log=log)
+        graph, greport = T.operational_graph(be, exclude_qubits=exclude_qubits,
+                                             exclude_edges=exclude_edges, log=log)
         emb = T.choose_embedding(be, ns, center, mode=mode, log=log, gauss_sites=gauss_sites,
                                  graph=graph, allow_transpiler=False)
         red = emb.info.get("redundancy", 1)
+        used = set(emb.layout or ())
+        if used & set(exclude_qubits):
+            raise T.EmbeddingError(f"embedding uses excluded qubit(s) {sorted(used & set(exclude_qubits))}")
         res.add("embedding", R.PASS if red >= 2 else R.WARN,
                 f"{emb.kind}, redundancy {red}, spare {emb.info.get('spare_qubits')}, "
-                f"{len(greport['dropped_qubits'])} dead qubit(s) excluded",
+                f"{len(greport['dropped_qubits'])} dead qubit(s) excluded"
+                + (f" ({len(exclude_qubits)} qubit(s), {len(exclude_edges)} coupler(s) by request)"
+                   if exclude_qubits or exclude_edges else ""),
                 embedding={"kind": emb.kind, "redundancy": red,
                            "spare_qubits": emb.info.get("spare_qubits"),
                            "layout": list(emb.layout) if emb.layout else None},

@@ -124,6 +124,28 @@ def _ideal_template(args):
     return tpl.replace("{card}", args.card)
 
 
+def _items(value) -> list:
+    """A comma-separated option string, or an already split list, -> items."""
+    if not value:
+        return []
+    if isinstance(value, str):
+        value = value.split(",")
+    return [str(x).strip() for x in value if str(x).strip()]
+
+
+def _excluded_qubits(args) -> tuple:
+    return tuple(int(q) for q in _items(getattr(args, "exclude_qubits", None)))
+
+
+def _excluded_edges(args) -> tuple:
+    """'U-V' items -> (u, v) pairs."""
+    out = []
+    for e in _items(getattr(args, "exclude_edges", None)):
+        u, v = e.split("-")
+        out.append((int(u), int(v)))
+    return tuple(out)
+
+
 def _setup(args, basis=None, require_real=False):
     from . import campaign as CP
     card = C.load_card(args.card)
@@ -140,8 +162,15 @@ def _setup(args, basis=None, require_real=False):
     if getattr(args, "preset", None) and "gauss-midcircuit" in args.preset:
         from .gauss import gauss_ancilla_sites
         gauss_sites = gauss_ancilla_sites(lat, center)
+    # the search starts from the operational graph, never the pristine map:
+    # what the backend marks dead plus what the caller excludes
+    graph, greport = T.operational_graph(be, exclude_qubits=_excluded_qubits(args),
+                                         exclude_edges=_excluded_edges(args), log=log)
+    if greport["dropped_qubits"] or greport["dropped_edges"]:
+        log(f"embedding avoids {len(greport['dropped_qubits'])} qubit(s) and "
+            f"{len(greport['dropped_edges'])} coupler(s): {greport['reasons']}")
     emb = T.choose_embedding(be, args.ns, center, mode=args.mode, log=log, gauss_sites=gauss_sites,
-                             allow_transpiler=getattr(args, "allow_transpiler", False))
+                             graph=graph, allow_transpiler=getattr(args, "allow_transpiler", False))
     if getattr(args, "preset", None):
         specs = CP.compose_presets(args.preset)
         card = CP.load_cards(specs, None)       # {name: card} for the composed campaign
@@ -409,7 +438,7 @@ def cmd_analyze(args):
     A.analyze(args.bits, _ideal_template(args), args.out, args.ns, center, args.times, args.components,
               card["couplings"]["eta"], args.backend, log=log, prefix=prefix, card=args.card,
               select_by_card=args.by_card, wing_surrogate=args.wing_surrogate,
-              im=args.im, postselect=args.postselect)
+              im=args.im, postselect=args.postselect, rounds=args.postselect_rounds)
 
 
 def cmd_acceptance(args):
@@ -433,7 +462,8 @@ def cmd_acceptance(args):
                  wing_surrogate=args.wing_surrogate, rehearse_shots=args.accept_shots,
                  qpdf_shots=args.qpdf_shots, vac_shot_factor=args.vac_shot_factor,
                  kappa_tol=args.kappa_tol, refs=args.refs,
-                 keep_rehearsal=args.keep_rehearsal, log=log)
+                 keep_rehearsal=args.keep_rehearsal, log=log,
+                 exclude_qubits=_excluded_qubits(args), exclude_edges=_excluded_edges(args))
     path = R.write_record(record_path, "acceptance", rec, rec["status"])
     print()
     print(R.summarize({"kind": "acceptance", **rec, "env": R.env_stamp(), "git": R.git_stamp()}))
@@ -548,6 +578,12 @@ def main(argv=None):
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--card", default=DEFAULT_CARD)
     ap.add_argument("--ns", type=int, default=NS)
+    ap.add_argument("--exclude-qubits", default="", metavar="Q,Q,...",
+                    help="physical qubits the embedding must not use (on top of what the backend marks "
+                         "non-operational), comma-separated, e.g. 17,62,77: the dead matter qubits and "
+                         "the bad link qubit of the 2026-10-06 phoenix ladder")
+    ap.add_argument("--exclude-edges", default="", metavar="U-V,U-V,...",
+                    help="physical couplers the embedding must not use, comma-separated U-V pairs")
     ap.add_argument("--allow-transpiler", action="store_true",
                     help="permit a transpiler-chosen layout when no ladder/ring fits. Off by default: "
                          "it roughly doubles the two-qubit count and skips the layout-preservation "
@@ -661,6 +697,9 @@ def main(argv=None):
                     help="Gauss-law post-selection: keep only the shots on which the 2W+1 checks "
                          "around the insertion all pass, in every Z-setting pub (physics, mirror, "
                          "plain, reference) before the estimators; 0 = off.  XY pubs are unfiltered")
+    an.add_argument("--postselect-rounds", action="store_true",
+                    help="gauss-midcircuit pubs: also drop the shots with a non-trivial syndrome in "
+                         "any mid-circuit extraction round; the slice keeps the acceptance per round")
     an.add_argument("--qpdf", action="store_true",
                     help="reduce the qpdf-scan bilinears instead of the W slices: "
                          "connected h(m) -> q(x) -> <x> per card")
