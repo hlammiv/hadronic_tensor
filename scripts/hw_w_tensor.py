@@ -73,6 +73,9 @@ p.add_argument("--im", default=None, action=argparse.BooleanOptionalAction,
                     "The real part alone forces W(-q0,q1) = W(q0,-q1), so the q0 < 0 half "
                     "of the map is a reflection; the imaginary part is what gives the "
                     "transform its one-sided support.  Default: on when available")
+p.add_argument("--drop-sites", type=int, nargs="+", default=(), metavar="SITE",
+               help="logical sites masked in every slice (e.g. the two dead matter qubits, "
+                    "sites 16 and 48 on the 2026-10-06 phoenix embedding)")
 p.add_argument("--beta-min", type=float, default=0.01,
                help="mask probes with |beta| below this (default 0.01)")
 p.add_argument("--window", default="gauss", choices=("gauss", "kaiser", "dpss", "rect"),
@@ -218,6 +221,8 @@ for comp in tensor.COMPONENTS:
             raise ValueError(f"{path}: expected {NS} probe values")
         finite = np.isfinite(G_hw) & np.isfinite(Cerr) & np.isfinite(kap) & (Cerr >= 0)
         ok = (kap > args.kap_min) & (np.abs(bet) > args.beta_min) & finite
+        if args.drop_sites:
+            ok[list(args.drop_sites)] = False
         if not np.isfinite(g.g[comp][ti]).all():
             raise ValueError(f"{path}: nonfinite MPS reference")
         if not ok.any():
@@ -306,7 +311,8 @@ for comp in tensor.COMPONENTS:
 
 log_msg = ([f"kappa floor {args.kap_min:g}, |beta| floor {args.beta_min:g}, "
             f"time window {args.window}"
-            + (f" (p = {args.sig_t_p:g})" if args.sig_t_p is not None else "")] + reweighted
+            + (f" (p = {args.sig_t_p:g})" if args.sig_t_p is not None else "")
+            + (f", sites {list(args.drop_sites)} dropped" if args.drop_sites else "")] + reweighted
            + log_msg)
 if not W_hw:
     raise SystemExit("\n".join(log_msg) + "\nNo usable components; no tensor plotted.")
@@ -357,7 +363,7 @@ if args.parity:
 log_msg.append("cuts at q1 = " + ", ".join(f"{q1[j]:.6f}" for j in cut_indices))
 log_msg.append("command: PYTHONPATH=. " + command)
 print("\n".join(log_msg))
-np.savez(out + ".npz", q0=q0, q1=q1, k0=k0, times=slice_times,
+np.savez(out + ".npz", q0=q0, q1=q1, k0=k0, times=slice_times, dropped_sites=np.array(args.drop_sites, int),
          ns=NS, center=C, sig_x=sig_x, integration_dt=DT, integration_dx=DX,
          source_j0=args.j0, source_j1=args.j1, label=args.label, command=command,
          cut_q1=q1[cut_indices], q0_plot_limits=args.q0_range, window_factors=window_factors,
