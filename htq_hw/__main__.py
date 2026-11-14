@@ -81,7 +81,7 @@ def cmd_embed(args):
               f"grid {T.grid_coordinates(g)[:2] if T.grid_coordinates(g) else None}")
         emb = T.choose_embedding(be, args.ns, center, mode=args.mode, log=log,
                                  allow_transpiler=getattr(args, "allow_transpiler", False),
-                                 graph=g, basis=basis, min_core_t2_us=_core_t2(args))
+                                 graph=g, basis=basis, min_core_t2_us=_core_t2(args), packet=_packet(args))
         emb.validate(g)
         info = {k: v for k, v in emb.info.items() if k != "cycle"}
         print(f"  {emb.summary()}  info {info}")
@@ -96,7 +96,8 @@ def cmd_report(args):
     rows = T.report(args.targets, ns=args.ns, steps=tuple(args.steps), bases=tuple(args.basis),
                     mode=args.mode, gadgets=tuple(args.gadget), card=card,
                     cache_dir=args.cache, seed=args.seed, log=log,
-                    allow_transpiler=allow_transpiler, **filters)
+                    allow_transpiler=allow_transpiler, min_t2_us=_core_t2(args), packet=_packet(args),
+                    **filters)
     print()
     print(T.format_table(rows))
     for spec in args.targets:
@@ -107,7 +108,7 @@ def cmd_report(args):
                 graph, _ = T.operational_graph(be, basis=basis, log=log, **filters)
                 emb = T.choose_embedding(be, args.ns, _center_for(card, args.ns), mode=args.mode,
                                          allow_transpiler=allow_transpiler, graph=graph, basis=basis,
-                                         min_core_t2_us=_core_t2(args))
+                                         min_core_t2_us=_core_t2(args), packet=_packet(args))
                 b = T.transpile_bundle(be, lat, card, emb, (max(args.steps),), basis, "J0", args.seed, args.cache)
                 full = C.readout_layer(b.base.compose(b.blocks[max(args.steps)]["physics"]), lat,
                                        b.blocks[max(args.steps)]["layout"], "Z")
@@ -164,6 +165,21 @@ def _core_t2(args):
     return None if v is None else float(v)
 
 
+def _packet(args):
+    """--packet LO-HI [--packet-min-t2 US --packet-max-2q-error P
+    --packet-max-readout-error P] -> T.PacketPolicy, or None."""
+    v = getattr(args, "packet", None)
+    floors = {k: getattr(args, a, None) for k, a in (("min_t2_us", "packet_min_t2"),
+                                                     ("max_2q_error", "packet_max_2q_error"),
+                                                     ("max_readout_error", "packet_max_readout_error"))}
+    if v is None:
+        if any(x is not None for x in floors.values()):
+            raise SystemExit("--packet-min-t2 / --packet-max-2q-error / --packet-max-readout-error "
+                             "need --packet LO-HI")
+        return None
+    return T.PacketPolicy.parse(v, **{k: x for k, x in floors.items() if x is not None})
+
+
 def _twirl_gates(args) -> bool | None:
     """--twirl-gates auto/on/off -> None/True/False for campaign.gate_twirling."""
     value = getattr(args, "twirl_gates", "auto")
@@ -206,7 +222,7 @@ def _setup(args, basis=None, require_real=False):
             f"{len(greport['dropped_edges'])} coupler(s): {greport['reasons']}")
     emb = T.choose_embedding(be, args.ns, center, mode=args.mode, log=log, gauss_sites=gauss_sites,
                              graph=graph, allow_transpiler=getattr(args, "allow_transpiler", False),
-                             basis=run_basis, min_core_t2_us=_core_t2(args))
+                             basis=run_basis, min_core_t2_us=_core_t2(args), packet=_packet(args))
     if emb.info.get("core_t2_us"):
         log(f"Hadamard-test core T2: {T._core_summary(emb.info['core_t2_us'])}")
     if getattr(args, "preset", None):
@@ -384,11 +400,44 @@ def cmd_submit(args):
                          args.guard, tag=args.tag, log=log, est_seconds=est_s,
                          strict_guard=not args.no_strict_guard, batch=not args.no_batch,
                          estimate_wait=args.estimate_wait, job_indices=args.only_jobs,
-                         twirl_gates=_twirl_gates(args), pre_twirl=args.pre_twirl)
+                         twirl_gates=_twirl_gates(args), pre_twirl=args.pre_twirl,
+                         twirl_per_job=getattr(args, "twirl_per_job", 1))
     except CP.BudgetError as e:
         raise SystemExit(f"budget guard: {e}")
     if not args.real and args.fetch:
         CP.fetch_all([(r["job"], r["meta"]) for r in recs], args.out, log=log)
+
+
+def cmd_gauss_check(args):
+    """Gauss-law check of the layout from the t = 0 reference pub (layout_check)."""
+    import numpy as np
+    from . import layout_check as LC
+    lat = Lattice(args.ns)
+    try:
+        lo, hi = (int(x) for x in args.sites.split("-"))
+    except ValueError:
+        raise SystemExit(f"--sites takes LO-HI, e.g. 20-28, got {args.sites!r}")
+    layout = None
+    if args.job:
+        import json
+        with open(args.job) as f:
+            layout = json.load(f).get("initial_layout")
+    z = np.load(args.bits, allow_pickle=True)
+    try:
+        name, arr = LC.find_reference(z, args.card)
+    except ValueError as e:
+        raise SystemExit(f"{args.bits}: {e}")
+    g, err = LC.gauss_profile(arr, lat)
+    center = args.center if args.center is not None else CENTER
+    res = LC.check(g, err, range(lo, hi + 1), center=center, min_ratio=args.min_ratio)
+    print(LC.format_report(name, res, layout, lat))
+    if args.record:
+        LC.write_record(args.record, {"kind": "gauss-check", "bits": args.bits, "pub": name, "ns": args.ns,
+                                      "sites": [lo, hi], "layout": layout, "shots": int(len(arr)),
+                                      "G": [float(v) for v in g], "err": [float(v) for v in err], **res})
+        print(f"record: {args.record}")
+    if res["status"] != "PASS":
+        raise SystemExit(1)
 
 
 def cmd_fetch(args):
@@ -510,7 +559,7 @@ def cmd_acceptance(args):
                  keep_rehearsal=args.keep_rehearsal, log=log,
                  exclude_qubits=_excluded_qubits(args), exclude_edges=_excluded_edges(args),
                  mirror_eps=args.mirror_eps, twirl_gates=_twirl_gates(args), pre_twirl=args.pre_twirl,
-                 min_core_t2_us=_core_t2(args), **_error_cuts(args))
+                 min_core_t2_us=_core_t2(args), packet=_packet(args), **_error_cuts(args))
     path = R.write_record(record_path, "acceptance", rec, rec["status"])
     print()
     print(R.summarize({"kind": "acceptance", **rec, "env": R.env_stamp(), "git": R.git_stamp()}))
@@ -651,6 +700,19 @@ def main(argv=None):
                          "neighbours, their links and the ancilla) has a qubit with calibrated T2 below "
                          "US microseconds or none, e.g. 100: the 2026-11-08 chicago layout put the "
                          "insertion site on a 70 us qubit and its mirror collapsed")
+    ap.add_argument("--packet", default=None, metavar="LO-HI",
+                    help="protect the packet region, matter sites LO..HI with their links and the "
+                         "ancilla, e.g. 20-28: try every placement of the insertion site on the "
+                         "cycle (both directions), match link and ancilla qubits by calibration, "
+                         "and rank layouts by the region's readout, T2 and coupler errors. The "
+                         "2026-11-10/11 chicago layout passed every cut with a 23 us link qubit and "
+                         "1.4-4.5%% couplers at sites 26-28")
+    ap.add_argument("--packet-min-t2", type=float, default=None, metavar="US",
+                    help="with --packet: reject layouts with a packet-region qubit below US us T2")
+    ap.add_argument("--packet-max-2q-error", type=float, default=None, metavar="P",
+                    help="with --packet: reject layouts with a packet-region coupler above P")
+    ap.add_argument("--packet-max-readout-error", type=float, default=None, metavar="P",
+                    help="with --packet: reject layouts with a packet-region qubit reading out worse than P")
     ap.add_argument("--allow-transpiler", action="store_true",
                     help="permit a transpiler-chosen layout when no ladder/ring fits. Off by default: "
                          "it roughly doubles the two-qubit count and skips the layout-preservation "
@@ -669,6 +731,11 @@ def main(argv=None):
                          "two-qubit skeleton unchanged), submitted as K pubs of shots/K in K "
                          "instance jobs and merged back by fetch under the pub's own name. The "
                          "Sampler's gate twirling is off. Recorded with the jobs (options.pre_twirl, twirl)")
+    ap.add_argument("--twirl-per-job", type=int, default=1, metavar="P",
+                    help="with --pre-twirl K: pack P consecutive instances into each job, so a job "
+                         "of n pubs is sent as ceil(K/P) jobs of up to nP pubs instead of K jobs of n. "
+                         "The Runtime charges ~3.4 s per job and ~0.1 s per pub (chicago, 2026-11-11), "
+                         "so K = 16 or 32 needs P > 1. Default 1 (one instance per job)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("audit").set_defaults(fn=cmd_audit)
     e = sub.add_parser("embed")
@@ -752,6 +819,19 @@ def main(argv=None):
     ft.add_argument("meta", nargs="+", help="data/hw/htq_job_<id>.json files")
     ft.add_argument("--out", default="data/hw")
     ft.set_defaults(fn=cmd_fetch)
+    gc = sub.add_parser("gauss-check", help="Gauss-law check of a layout from its t = 0 reference pub: "
+                        "run on the fetched first job before submitting the rest")
+    gc.add_argument("bits", help="htq_bits_<id>.npz holding the j0 t=0 Z-readout pub")
+    gc.add_argument("--card", default=None, help="card of the reference pub when several are present")
+    gc.add_argument("--sites", default="20-28", metavar="LO-HI", help="packet sites to check (default 20-28)")
+    gc.add_argument("--center", type=int, default=None, help=f"insertion site (default {CENTER})")
+    gc.add_argument("--min-ratio", type=float, default=0.5,
+                    help="every packet site's syndrome must be >= this fraction of the far-site median "
+                         "(default 0.5: ibm_phoenix 2026-10-06 passes at 0.62, ibm_chicago 2026-11-11 "
+                         "fails at 0.17)")
+    gc.add_argument("--job", default=None, help="the job record, to print the qubits of each site")
+    gc.add_argument("--record", default=None, help="write the result as JSON here")
+    gc.set_defaults(fn=cmd_gauss_check)
     an = sub.add_parser("analyze")
     an.add_argument("bits", nargs="+", help="data/hw/htq_bits_<id>.npz files (one per job)")
     an.add_argument("--ideal", default=None)
@@ -859,6 +939,9 @@ def main(argv=None):
         log(f"mirror block total angle set to {args.mirror_eps:g} (default {MIRROR_EPS:g})")
     if getattr(args, "pre_twirl", 0) == 1 or getattr(args, "pre_twirl", 0) < 0:
         raise SystemExit("--pre-twirl needs K >= 2 instances (0 disables it)")
+    tpj = getattr(args, "twirl_per_job", 1)
+    if tpj < 1 or (tpj > 1 and not (getattr(args, "pre_twirl", 0) >= tpj)):
+        raise SystemExit("--twirl-per-job P needs 1 <= P <= K with --pre-twirl K")
     if hasattr(args, "basis"):
         # refuse the Runtime-rejected combination here, not after the acceptance has passed
         from . import campaign as CP

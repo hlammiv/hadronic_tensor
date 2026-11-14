@@ -577,11 +577,15 @@ def _notched_cycle(rows, cols, rect, n_notch, avoid=(), depths=(1,), backtrack=F
     return out
 
 
-def _pendant_matching(g: Graph, cycle: list[int], extra_for=None):
+def _pendant_matching(g: Graph, cycle: list[int], extra_for=None, cost=None):
     """Maximum bipartite matching cycle vertex -> private non-cycle neighbour.
     ``extra_for`` (vertex or list of vertices) adds a second demand on those
     vertices (the Hadamard-test ancilla, and the gauss-midcircuit ancillas).
-    Returns (pendant dict, ancilla or list of ancillas) or None if not perfect."""
+    ``cost(v, w, extra)`` (optional) makes it a minimum-cost perfect matching:
+    the pendant (link qubit, or ancilla when ``extra``) w of vertex v is then
+    chosen by calibration rather than by whatever the matching finds first
+    (``PacketPolicy``).  Returns (pendant dict, ancilla or list of ancillas)
+    or None if not perfect."""
     import scipy.sparse as sp
     from scipy.sparse.csgraph import maximum_bipartite_matching
 
@@ -595,7 +599,19 @@ def _pendant_matching(g: Graph, cycle: list[int], extra_for=None):
     data = [(i, col_ix[w]) for i, v in enumerate(rows) for w in g.adj[v] if w not in in_cyc]
     mat = sp.csr_matrix((np.ones(len(data)), ([i for i, _ in data], [j for _, j in data])),
                         shape=(len(rows), len(cols)))
-    match = maximum_bipartite_matching(mat, perm_type="column")
+    if cost is None:
+        match = maximum_bipartite_matching(mat, perm_type="column")
+    else:
+        from scipy.optimize import linear_sum_assignment
+        forbidden, worst = 1e12, 1e9            # non-edges; uncalibrated (inf) pendants
+        m = np.full((len(rows), len(cols)), forbidden)
+        for i, j in data:
+            c = float(cost(rows[i], cols[j], i >= len(cycle)))
+            m[i, j] = min(c, worst) if np.isfinite(c) else worst
+        r, cj = linear_sum_assignment(m)
+        match = np.full(len(rows), -1)
+        ok = m[r, cj] < forbidden
+        match[r[ok]] = cj[ok]
     if np.any(match < 0):
         return None
     pend = {v: cols[match[i]] for i, v in enumerate(cycle)}
@@ -621,16 +637,27 @@ def _rect_candidates(rows, cols, ns):
 
 
 def grid_ladder(g: Graph, ns: int, center: int = CENTER, coords=None,
-                max_embeddings: int = 8, gauss_sites=None) -> list["Embedding"]:
+                max_embeddings: int = 8, gauss_sites=None, packet_cost=None,
+                max_rects: int = 16) -> list["Embedding"]:
     """Ladder embeddings on a square lattice: matter Ns-cycle with a private
     pendant per site and an ancilla adjacent to site ``center``; one
-    Embedding per ancilla-capable centre vertex (up to ``max_embeddings``)."""
+    Embedding per ancilla-capable centre vertex (up to ``max_embeddings``).
+
+    By default only the first rectangle that works is used, traversed in one
+    direction, and the first ``max_embeddings`` rotations are kept, so where
+    the packet region lands on the cycle is an accident of vertex order.
+    ``packet_cost(cyc, k)`` (a ``PacketPolicy``) instead enumerates every
+    rotation in both directions on up to ``max_rects`` rectangles and assigns
+    the pendants (links, ancilla) by the minimum-cost matching it returns."""
     grid = grid_coordinates(g) if coords is None else coords
     if grid is None:
         return []
     rows, cols, coords = grid
     node = {rc: v for v, rc in coords.items()}
     gs = sorted(int(n) for n in (gauss_sites or []))
+    if gs and packet_cost is not None:
+        raise ValueError("the packet policy does not support gauss-midcircuit ancillas")
+    found, n_rects = [], 0
     for rect in _rect_candidates(rows, cols, ns):
         n_notch = (ns - (2 * (rect[2] - rect[0] + rect[3] - rect[1]))) // 2
         segments = [None]
@@ -646,6 +673,15 @@ def grid_ladder(g: Graph, ns: int, center: int = CENTER, coords=None,
             if not all(g.has_edge(cyc[i], cyc[(i + 1) % ns]) for i in range(ns)):
                 continue
             if _pendant_matching(g, cyc) is None:
+                continue
+            if packet_cost is not None:
+                n_rects += 1
+                for cc in (cyc, cyc[::-1]):
+                    for k in range(ns):
+                        m = _pendant_matching(g, cc, extra_for=cc[k], cost=packet_cost(cc, k))
+                        if m is not None:
+                            found.append(_ladder_embedding(cc, m[0], m[1], k, ns, center,
+                                                           info={"rect": rect, "notches": n_notch}))
                 continue
             rotations = range(ns)
             if segment:                     # centre on the segment's first patch node, either direction
@@ -668,7 +704,9 @@ def grid_ladder(g: Graph, ns: int, center: int = CENTER, coords=None,
                     break
             if embs:
                 return embs
-    return []
+        if packet_cost is not None and n_rects >= max_rects:
+            break
+    return found
 
 
 def _ladder_embedding(cyc, pend, anc, k, ns, center, info):
@@ -1105,14 +1143,35 @@ def grow_cycles(g: Graph, ns: int, beam: int = 64, time_budget_s: float = 600.0,
 
 def search_ladder(g: Graph, ns: int, center: int = CENTER, gauss_sites=None, beam: int = 64,
                   time_budget_s: float = 600.0, max_embeddings: int = 8, seed: int = SEED,
-                  max_expansions: int = MAX_EXPANSIONS, report: dict | None = None, log=None):
+                  max_expansions: int = MAX_EXPANSIONS, report: dict | None = None, log=None,
+                  packet_cost=None, max_cycles: int = 64):
     """Ladder embeddings found on the real graph: an ns-cycle of matter sites,
     a private pendant link qubit for each, and an ancilla adjacent to the
-    centre site.  Needs no grid coordinates and tolerates dead qubits/edges."""
+    centre site.  Needs no grid coordinates and tolerates dead qubits/edges.
+
+    By default the first ``max_embeddings`` rotations of the first cycles are
+    kept.  ``packet_cost(cyc, k)`` (a ``PacketPolicy``) instead takes every
+    rotation of up to ``max_cycles`` cycles in both directions, with pendants
+    from the minimum-cost matching it returns."""
     out = []
     gs = sorted(gauss_sites or [])
+    if gs and packet_cost is not None:
+        raise ValueError("the packet policy does not support gauss-midcircuit ancillas")
+    n_cyc = 0
     for cyc in grow_cycles(g, ns, beam=beam, time_budget_s=time_budget_s, seed=seed,
                            max_expansions=max_expansions, report=report, log=log):
+        if packet_cost is not None:
+            n_cyc += 1
+            for d, cc in ((1, list(cyc)), (-1, list(cyc)[::-1])):
+                for k in range(len(cc)):
+                    m = _pendant_matching(g, cc, extra_for=cc[k], cost=packet_cost(cc, k))
+                    if m is not None:
+                        out.append(_ladder_embedding(cc, m[0], m[1], k, ns, center,
+                                                     info={"source": "graph-search", "rot": k,
+                                                           "direction": d, "cycle_index": n_cyc - 1}))
+            if n_cyc >= max_cycles:
+                return out
+            continue
         for k in range(len(cyc)):
             v = cyc[k]
             extra = [v] + [cyc[(k + int(n) - center) % ns] for n in gs]
@@ -1324,12 +1383,204 @@ def _core_t2_floor(scored, props, ns, center, floor, log=None):
     return kept
 
 
+# ------------------------------------------------------------------ packet region
+PACKET_TAU_US = 10.0        # dephasing window of a wire: cost tau / T2
+PACKET_EDGE_USES = 25       # two-qubit gates per coupler in a mid-depth pub
+
+
+@dataclass
+class PacketPolicy:
+    """Protect the region the wave packet occupies (``--packet LO-HI``).
+
+    The chooser's score is a sum over ~100 qubits and couplers, and the
+    2%/5% graph cuts are about 8x the median, so a layout can pass every cut
+    and still put a T2 = 23 us link qubit and 1.4-4.5% couplers inside the
+    packet (ibm_chicago 2026-11-10/11: sites 26-28 and link 27, Gauss
+    syndromes 0.11-0.14 at t = 0 against 0.65 elsewhere).  Tightening the
+    cuts device-wide leaves no Ns = 50 ladder, but only ~18 qubits need to be
+    good.  With a policy the chooser (1) tries every placement of the
+    insertion site on the cycle, both directions, several rectangles,
+    (2) picks link and ancilla pendants by a minimum-cost matching that
+    weights packet vertices fully and the rest by ``outside_weight``,
+    (3) drops placements that break the optional hard floors on the packet
+    wires (``min_t2_us``, ``max_readout_error``, ``max_2q_error``) and
+    (4) ranks the survivors by packet cost, the global score breaking ties.
+
+    Packet wires: matter sites LO..HI, links LO..HI-1, the ancilla; packet
+    edges: the required edges among them.  Cost = sum over wires of
+    (readout + tau_us / T2) + sum over edges of edge_uses x two-qubit error
+    (the basis's gates, as in ``score_embedding``); missing calibration is
+    infinite.  The weights are a heuristic: tau = 10 us makes a T2 = 23 us
+    qubit cost 0.43 and a 180 us one 0.06; 25 uses make a 4.5% coupler cost
+    1.1 and a median 0.25% one 0.06; readout enters once."""
+
+    sites: tuple
+    min_t2_us: float | None = None
+    max_readout_error: float | None = None
+    max_2q_error: float | None = None
+    tau_us: float = PACKET_TAU_US
+    edge_uses: float = PACKET_EDGE_USES
+    outside_weight: float = 0.1
+
+    def __post_init__(self):
+        lo, hi = (int(x) for x in self.sites)
+        if not lo < hi:
+            raise EmbeddingError(f"packet sites must be LO < HI, got {self.sites}")
+        self.sites = (lo, hi)
+        self.min_t2_us = _duration_cut(self.min_t2_us, "packet min_t2_us")
+        self.max_readout_error = _error_cut(self.max_readout_error, "packet max_readout_error")
+        self.max_2q_error = _error_cut(self.max_2q_error, "packet max_2q_error")
+
+    @classmethod
+    def parse(cls, text: str, **kw) -> "PacketPolicy":
+        """'20-28' -> PacketPolicy((20, 28), **kw)."""
+        try:
+            lo, hi = (int(x) for x in str(text).split("-"))
+        except ValueError:
+            raise EmbeddingError(f"--packet takes LO-HI site numbers, e.g. 20-28, got {text!r}") from None
+        return cls((lo, hi), **kw)
+
+    def wires(self, ns: int) -> list[int]:
+        lo, hi = self.sites
+        if not (0 <= lo and hi < ns):
+            raise EmbeddingError(f"packet sites {lo}-{hi} outside 0..{ns - 1}")
+        return [2 * n for n in range(lo, hi + 1)] + [2 * n + 1 for n in range(lo, hi)] + [2 * ns]
+
+    def to_dict(self) -> dict:
+        return {"sites": list(self.sites), "min_t2_us": self.min_t2_us,
+                "max_readout_error": self.max_readout_error, "max_2q_error": self.max_2q_error,
+                "tau_us": self.tau_us, "edge_uses": self.edge_uses,
+                "outside_weight": self.outside_weight}
+
+
+def _edge_error(be, u, v, basis=None):
+    """The two-qubit error ``score_embedding`` charges for coupler (u, v):
+    summed over the basis's gates; inf when missing or invalid."""
+    target = getattr(be, "target", None)
+    if target is None:
+        return float("inf")
+    gates = basis_two_qubit_gates(basis)
+    available = [g for g in (gates or TWO_Q) if _target_supports(target, g, (u, v))]
+    if not available:
+        return float("inf")
+    s = 0.0
+    for gate in available if gates else available[:1]:
+        error = _target_error(target, (gate,), (u, v))
+        if not _valid_error(error) or error >= 1.0:
+            return float("inf")
+        s += error
+    return s
+
+
+def _wire_cost(props, q, tau_us):
+    ro, t2 = _readout_error(props, q), _t2_us(props, q)
+    if not _valid_error(ro) or t2 is None or not np.isfinite(t2) or t2 <= 0:
+        return float("inf")
+    return ro + tau_us / t2
+
+
+def packet_pendant_cost(policy: PacketPolicy, be, props, ns: int, center: int, basis=None):
+    """-> packet_cost(cyc, k) for grid_ladder: the pendant cost function of
+    the placement with site ``center`` on cyc[k] (site n on cyc[k + n - center])."""
+    lo, hi = policy.sites
+    wcache, ecache = {}, {}
+
+    def wire(q):
+        if q not in wcache:
+            wcache[q] = _wire_cost(props, q, policy.tau_us)
+        return wcache[q]
+
+    def edge(u, v):
+        key = (min(u, v), max(u, v))
+        if key not in ecache:
+            ecache[key] = _edge_error(be, u, v, basis)
+        return ecache[key]
+
+    def for_placement(cyc, k):
+        # site n's pendant is link n-1: sites LO+1..HI carry the packet links
+        inside = {cyc[(k + n - center) % ns] for n in range(lo + 1, hi + 1)}
+
+        def cost(v, w, extra):
+            c = wire(w) + policy.edge_uses * edge(v, w)
+            return c if (extra or v in inside) else policy.outside_weight * c
+        return cost
+    return for_placement
+
+
+def packet_quality(emb: "Embedding", be, props, policy: PacketPolicy, basis=None) -> dict:
+    """Calibration of the packet region of ``emb``: worst T2, readout and
+    coupler, and the policy's cost."""
+    ns = emb.ns
+    wires = policy.wires(ns)
+    ws = set(wires)
+    edges = [(a, b) for a, b in emb.required_edges() if a in ws and b in ws]
+    L = emb.layout
+    t2 = {L[w]: _t2_us(props, L[w]) for w in wires}
+    ro = {L[w]: _readout_error(props, L[w]) for w in wires}
+    e2 = {(L[a], L[b]): _edge_error(be, L[a], L[b], basis) for a, b in edges}
+    bad = lambda v: v is None or not np.isfinite(v)
+    q_t2 = min(t2, key=lambda q: -1.0 if bad(t2[q]) else t2[q])
+    q_ro = max(ro, key=lambda q: 2.0 if not _valid_error(ro[q]) else ro[q])
+    e_w = max(e2, key=lambda e: e2[e]) if e2 else None
+    cost = (sum(_wire_cost(props, L[w], policy.tau_us) for w in wires)
+            + policy.edge_uses * sum(e2.values()))
+    return {"sites": list(policy.sites), "cost": float(cost),
+            "min_t2_us": None if bad(t2[q_t2]) else float(t2[q_t2]), "min_t2_qubit": int(q_t2),
+            "max_readout_error": None if not _valid_error(ro[q_ro]) else float(ro[q_ro]),
+            "max_readout_qubit": int(q_ro),
+            "max_2q_error": None if e_w is None else float(e2[e_w]),
+            "max_2q_coupler": None if e_w is None else [int(e_w[0]), int(e_w[1])],
+            "centre": int(L[2 * emb.center]), "ancilla": int(L[2 * ns])}
+
+
+def _packet_summary(q) -> str:
+    fmt = lambda v, f: "none" if v is None else f.format(v)
+    return (f"site {q['sites'][0] + (q['sites'][1] - q['sites'][0]) // 2}-centred packet on "
+            f"centre q{q['centre']}, ancilla q{q['ancilla']}: cost {q['cost']:.3f}, "
+            f"min T2 {fmt(q['min_t2_us'], '{:.0f} us')} (q{q['min_t2_qubit']}), "
+            f"max readout {fmt(q['max_readout_error'], '{:.3f}')} (q{q['max_readout_qubit']}), "
+            f"max 2q {fmt(q['max_2q_error'], '{:.4f}')} "
+            f"({'-'.join(f'q{x}' for x in q['max_2q_coupler'] or [])})")
+
+
+def _packet_rank(scored, be, props, policy: PacketPolicy, basis, log=None):
+    """Apply the packet floors and rank by packet cost (score breaks ties)."""
+    rows, kept = [], []
+    for sc, i, e in scored:
+        q = packet_quality(e, be, props, policy, basis)
+        e.info["packet"] = q
+        fails = []
+        if policy.min_t2_us is not None and (q["min_t2_us"] is None or q["min_t2_us"] < policy.min_t2_us):
+            fails.append("T2")
+        if policy.max_readout_error is not None and (q["max_readout_error"] is None
+                                                     or q["max_readout_error"] > policy.max_readout_error):
+            fails.append("readout")
+        if policy.max_2q_error is not None and (q["max_2q_error"] is None
+                                                or q["max_2q_error"] > policy.max_2q_error):
+            fails.append("2q")
+        rows.append((q["cost"], sc, fails, q))
+        if not fails:
+            kept.append((q["cost"], sc, i, e))
+    if not kept:
+        best = sorted(rows, key=lambda r: (r[0], r[1]))[:6]
+        raise EmbeddingError(
+            f"no candidate layout keeps the packet region (sites {policy.sites[0]}-{policy.sites[1]}) "
+            f"within the floors (T2 >= {policy.min_t2_us}, readout <= {policy.max_readout_error}, "
+            f"2q <= {policy.max_2q_error}) among {len(scored)} placements; lowest-cost: "
+            + "; ".join(f"[fails {'/'.join(r[2])}] {_packet_summary(r[3])}" for r in best),
+            diagnostics={"packet": policy.to_dict(), "candidates": [r[3] for r in best]})
+    kept.sort(key=lambda x: (x[0], x[1], x[2]))
+    _log(f"packet policy: {len(kept)} of {len(scored)} placement(s) pass the floors; "
+         f"taking {_packet_summary(kept[0][3].info['packet'])}", log)
+    return [(sc, i, e) for _, sc, i, e in kept]
+
+
 def choose_embedding(be, ns: int, center: int = CENTER, mode: str = "auto",
                      max_cycles: int = 4, log=None, gauss_sites=None,
                      allow_transpiler: bool = False, graph=None, beam: int = 64,
                      time_budget_s: float = 600.0, seed: int = SEED,
                      max_expansions: int = MAX_EXPANSIONS, basis=None,
-                     min_core_t2_us=None) -> Embedding:
+                     min_core_t2_us=None, packet: PacketPolicy | None = None) -> Embedding:
     """mode: auto | ring | ladder | grid | transpiler.  auto = ladder on a
     square lattice (grid cycle if the ladder does not fit), ring on heavy-hex.
     Ties broken by score_embedding.
@@ -1347,20 +1598,37 @@ def choose_embedding(be, ns: int, center: int = CENTER, mode: str = "auto",
     within 0.1% of each other and the winner put site 24 on q108 (T2 70 us
     against 170-320 us around it), where the mirror collapsed.  The core T2
     is recorded in ``info["core_t2_us"]`` whenever properties are available,
-    floor or not."""
+    floor or not.
+
+    ``packet`` (``--packet LO-HI``, a ``PacketPolicy``) protects the whole
+    region the wave packet occupies: every placement is tried, pendants are
+    matched by calibration, the policy's floors are applied after the core T2
+    floor and the survivors are ranked by packet cost (``info["packet"]``)."""
     if mode == "transpiler":
         return Embedding("transpiler", ns, center, None)
     g = graph if graph is not None else Graph.from_backend(be)
     grid = grid_coordinates(g)
     cands = []
     search = {}
+    props = None
+    try:
+        props = be.properties()
+    except Exception:
+        pass
+    pcost = None
+    if packet is not None:
+        if props is None:
+            raise EmbeddingError("the packet policy (--packet) requires backend properties, but none are available")
+        packet.wires(ns)
+        pcost = packet_pendant_cost(packet, be, props, ns, center, basis)
     if mode in ("auto", "ladder"):
         if grid:
-            cands = grid_ladder(g, ns, center, coords=grid, gauss_sites=gauss_sites)
+            cands = grid_ladder(g, ns, center, coords=grid, gauss_sites=gauss_sites, packet_cost=pcost)
         if not cands:                       # templates need a pristine lattice; the graph search does not
             cands = search_ladder(g, ns, center, gauss_sites=gauss_sites, beam=beam,
                                   time_budget_s=time_budget_s, seed=seed,
-                                  max_expansions=max_expansions, report=search, log=log)
+                                  max_expansions=max_expansions, report=search, log=log,
+                                  packet_cost=pcost)
         if not cands and search.get("stopped_by") in ("time_budget", "max_expansions"):
             # "we ran out of budget" is not "there is no ladder", and the next
             # fallback costs 1.9x the two-qubit count per Trotter step
@@ -1402,11 +1670,6 @@ def choose_embedding(be, ns: int, center: int = CENTER, mode: str = "auto",
     scored = sorted(((score_embedding(e, be, basis), i, e) for i, e in enumerate(cands)),
                     key=lambda x: (x[0], x[1]))
     floor = _duration_cut(min_core_t2_us, "min_core_t2_us")
-    props = None
-    try:
-        props = be.properties()
-    except Exception:
-        pass
     if floor is not None:
         if props is None:
             raise EmbeddingError("the T2 floor (--min-t2) requires backend properties, but none are available")
@@ -1414,10 +1677,15 @@ def choose_embedding(be, ns: int, center: int = CENTER, mode: str = "auto",
     elif props is not None:
         for _, _, e in scored:
             e.info["core_t2_us"] = core_t2_us(props, e.layout, ns, center)
+    if packet is not None:
+        scored = _packet_rank(scored, be, props, packet, basis, log)
     best = scored[0][2]
     best.info["score"] = scored[0][0]
     if floor is not None:
         best.info["min_core_t2_us"] = floor
+    if packet is not None:
+        best.info["packet_policy"] = packet.to_dict()
+        best.info["packet_candidates"] = len(scored)
     if search:
         best.info["search"] = dict(search)
     best.info["n_candidates"] = len(cands)
@@ -1758,7 +2026,8 @@ def assign_block(b: Bundle, n: int, t_total: float, eps: float | None = None):
 def report(targets, ns: int = 50, steps=(1, 12), bases=("cz", "rzz"), mode: str = "auto",
            gadgets=("J0", "J1a"), card=None, cache_dir=None, seed: int = SEED,
            log=print, exclude_qubits=(), exclude_edges=(), max_readout_error=None,
-           max_2q_error=None, allow_transpiler: bool = False, min_t2_us=None) -> list[dict]:
+           max_2q_error=None, allow_transpiler: bool = False, min_t2_us=None,
+           packet=None) -> list[dict]:
     """Offline count table, selecting a filtered layout for each target x basis."""
     card = card or C.load_card()
     lat = Lattice(ns)
@@ -1772,7 +2041,7 @@ def report(targets, ns: int = 50, steps=(1, 12), bases=("cz", "rzz"), mode: str 
                                          basis=basis, log=log)
             emb = choose_embedding(be_b, ns, center, mode=mode, log=log, graph=graph,
                                    basis=basis, allow_transpiler=allow_transpiler,
-                                   min_core_t2_us=min_t2_us)
+                                   min_core_t2_us=min_t2_us, packet=packet)
             for kind in gadgets:
                 _log(f"== {spec} [{emb.kind}] basis={basis} gadget={kind}", log)
                 bnd = transpile_bundle(be_b, lat, card, emb, steps, basis, kind, seed,

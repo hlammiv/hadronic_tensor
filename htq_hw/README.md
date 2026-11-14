@@ -89,7 +89,28 @@ site 24 on q108 (T2 70 us, neighbours 170-320 us), where the mirror collapsed (k
 unchanged.  A device-wide T2 floor is not offered: 100 us would remove 30 of Nighthawk's 120 qubits
 and no Ns=50 ladder survives.  The floor needs calibration data, so offline it works on a fake in the
 cz basis (the fakes ship properties) but not on their rzz twins (GenericBackendV2 has none); on the
-real device it works in either basis.  Two refusals matter: it will not fall back to a transpiler layout
+real device it works in either basis.
+
+`--packet LO-HI` (opt-in; e.g. `--packet 20-28`) protects the whole region the wave packet occupies
+rather than the six core qubits: matter sites LO..HI, links LO..HI-1 and the ancilla, about 18 qubits.
+Without it the chooser keeps the first eight placements of the insertion site on the first cycle, in
+one direction, with whatever link pendants the matching finds first, so where the packet lands is an
+accident of vertex order.  On ibm_chicago 2026-11-10/11 that put a T2 = 23 us link qubit, 1.4-4.5%
+couplers and a 4.8% readout at sites 26-28, all inside the 2%/5% cuts, and the t = 0 Gauss syndromes
+there read 0.11-0.14 against 0.65 elsewhere.  With a `PacketPolicy` the chooser tries every placement
+in both directions on every cycle the search found (or every rectangle of the grid templates), assigns
+link and ancilla pendants by a minimum-cost matching on readout + 10 us/T2 + 25 x (two-qubit error)
+(packet vertices weighted fully, the rest at 0.1), applies optional hard floors on the packet wires
+(`--packet-min-t2 US`, `--packet-max-2q-error P`, `--packet-max-readout-error P`) after the core T2
+floor, and ranks the survivors by packet cost with the global score breaking ties.  The packet
+calibration is recorded in `info["packet"]` and the acceptance record.  Replayed on the 11 November
+calibration with the production cuts and `--min-t2 100`, it finds 257 placements and moves the packet
+from packet cost 3.76 (min T2 23 us, max coupler 1.85%, max readout 4.8%) to 2.39 (61 us, 1.16%,
+1.5%), with a better global score as well; adding `--packet-min-t2 50 --packet-max-2q-error 0.01`
+leaves 6 placements, best min T2 51 us, max coupler 0.44%, max readout 3.4%.  A placement whose
+packet qubits are all above 80 us T2 does not exist on that calibration.
+
+Two refusals matter: it will not fall back to a transpiler layout
 unless asked (that abandons the mirror-skeleton invariant), and it will not fall back from a ladder
 whose search merely *ran out of budget* (the grid alternative costs about 1.9x the two-qubit count per
 Trotter step).  The search is bounded by work, not wall clock, so a busy machine and an idle one choose
@@ -207,6 +228,30 @@ analysis never sees the instances.  The acceptance then preflights the
 instances that will be submitted and runs the `check` step on twirled
 circuits, which verifies the twirl's unitary equivalence on the production
 circuits themselves.
+
+`--twirl-per-job P` packs P consecutive instances into each job (pubs
+instance-major; the records carry `twirl.instance_list`), so a job of n pubs
+goes out as ceil(K/P) jobs of up to nP pubs.  The draws are the same as with
+P = 1.  It exists because four instances proved too few (2026-11-11: the slow
+W00 asymmetry from the single instances read 0.54 / 1.06 / 1.03 / 1.24, so
+the twirl-sampling error was 4x the shot error) and because job overhead
+dominates the cost of more: a fit to the 508 jobs of that run gives about
+3.4 s per job, 0.11 +- 0.06 s per pub and 17 s per million shots.  `fetch`
+orders the merged rows by instance index and records the per-instance row
+counts as `twirl_counts` (JSON) in the bits file.
+
+`gauss-check BITS` (layout_check.py) reads the t = 0 Z-readout reference pub
+of a fetched job and computes the Gauss syndromes G_n = (-1)^n Z_n X_{l-}
+X_{l+}, which are +1 on the prepared state of an ideal device.  It fails
+when any packet site (`--sites 20-28`) falls below `--min-ratio` (0.5) x the
+far-site median, and exits nonzero.  The t = 0 references of a run form job
+0, which the production run needs anyway, so submitting `--only-jobs 0`
+first, fetching it and running the check costs nothing extra.  On the
+recorded data: ibm_phoenix 2026-10-06 and ibm_chicago 2026-11-06 and
+2026-11-08 pass (lowest packet ratio 0.63, 0.81, 0.93); 2026-11-10 fails at
+sites 22, 23 (and 27 in the control) and 2026-11-11 at sites 27, 28 (ratio
+0.16-0.22), the sites where those runs' maps failed.  It cannot see a bad
+mirror on a good t = 0 state (8 November); that is what `--min-t2` is for.
 
 Pairing (`group_jobs`, max 8 pubs): a calibration group = the physics pubs
 of one (card, t, readout, dt) and their mirror(s); jobs never mix cards or

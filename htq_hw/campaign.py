@@ -840,6 +840,41 @@ def budget_guard(job, service=None, guard: float = 0.85, log=None, *,
         refresh = True
 
 
+def twirl_instances_of(meta: dict) -> list[int]:
+    """The twirl instances a job record carries: one, or ``instance_list``
+    when several are packed into one job (``--twirl-per-job``)."""
+    tw = meta.get("twirl") or {}
+    return [int(i) for i in tw.get("instance_list", [tw["instance"]])]
+
+
+def pack_twirl_instances(insts: list[dict], per_job: int) -> list[dict]:
+    """Merge the K instance dicts of one job (``pre_twirl_job``) into
+    ceil(K / per_job) job payloads of ``per_job`` consecutive instances each,
+    pubs instance-major (all pubs of instance i, then of i+1).  per_job = 1
+    returns the instances unchanged.
+
+    The Runtime charges about 3.4 s per job and 0.11 s per pub on ibm_chicago
+    (fit to the 508 jobs of 2026-11-11), so K = 32 as one job per instance
+    would cost ~13,900 s of job overhead for the 817-pub production list,
+    against ~430 s when the instances of a job travel together."""
+    per_job = int(per_job)
+    if per_job < 1:
+        raise ValueError("twirl instances per job must be >= 1")
+    if per_job == 1:
+        return [dict(inst, instance_list=[inst["instance"]]) for inst in insts]
+    out = []
+    for a in range(0, len(insts), per_job):
+        chunk = insts[a:a + per_job]
+        merged = {"instance": chunk[0]["instance"], "instance_list": [c["instance"] for c in chunk],
+                  "names": [], "pubs": {}, "shots": {}, "info": {}}
+        for c in chunk:
+            merged["names"] += c["names"]
+            for key in ("pubs", "shots", "info"):
+                merged[key].update(c[key])
+        out.append(merged)
+    return out
+
+
 def submit(mode, pubs: dict, info: dict, shots: dict, jobs: list[list[str]], lat: Lattice,
            emb: T.Embedding, basis: str, out_dir: str = "data/hw", service=None, guard: float = 0.85,
            tag: str = "", log=None, est_seconds: float | None = None, strict_guard: bool = True,
@@ -847,12 +882,15 @@ def submit(mode, pubs: dict, info: dict, shots: dict, jobs: list[list[str]], lat
            estimate_wait: float = ESTIMATE_WAIT_SECONDS,
            job_indices: list[int] | None = None,
            twirl_gates: bool | None = None, pre_twirl: int = 0,
-           twirl_seed: int = T.SEED) -> list[dict]:
+           twirl_seed: int = T.SEED, twirl_per_job: int = 1) -> list[dict]:
     """Submit one SamplerV2 job per name list; write data/hw/htq_job_<id>.json.
     With ``pre_twirl`` = K > 1 each name list becomes K instance jobs of
     pre-twirled circuits (pre_twirl_job), all carrying the same job_index and a
     ``twirl`` record whose ``group`` is the first instance's job id; ``fetch``
-    merges a group back into one bits file.
+    merges a group back into one bits file.  ``twirl_per_job`` = P packs P
+    consecutive instances into each job (ceil(K / P) jobs per name list, the
+    record's ``twirl.instance_list`` names them), which is what makes K = 16
+    or 32 affordable.
     ``mode`` is a real backend (from QiskitRuntimeService) or a fake backend /
     AerSimulator for local testing mode.
 
@@ -877,7 +915,8 @@ def submit(mode, pubs: dict, info: dict, shots: dict, jobs: list[list[str]], lat
     plan = []
     for k, names in enumerate(jobs):
         if pre_twirl > 1:
-            plan.append(pre_twirl_job(pubs, info, shots, names, pre_twirl, twirl_seed, indices[k]))
+            plan.append(pack_twirl_instances(
+                pre_twirl_job(pubs, info, shots, names, pre_twirl, twirl_seed, indices[k]), twirl_per_job))
         else:
             plan.append([{"instance": None, "names": list(names), "pubs": {n: pubs[n] for n in names},
                           "shots": {n: int(shots[n]) for n in names}, "info": {n: info.get(n, {}) for n in names}}])
@@ -904,6 +943,8 @@ def submit(mode, pubs: dict, info: dict, shots: dict, jobs: list[list[str]], lat
     twirl = gate_twirling(fractional, twirl_gates, pre_twirl)
     options = {"twirling_gates": twirl, "twirling_measure": True, "dd": "XY4",
                "mirror_eps": float(MIRROR_EPS), "pre_twirl": int(pre_twirl) if pre_twirl > 1 else 0}
+    if pre_twirl > 1 and twirl_per_job > 1:
+        options["twirl_per_job"] = int(twirl_per_job)
     records, cancelled = [], None
     with _batch_ctx(mode, real and batch, log) as bctx:
         smp = _sampler(bctx if bctx is not None else mode, fractional, twirl_gates=twirl)
@@ -914,7 +955,9 @@ def submit(mode, pubs: dict, info: dict, shots: dict, jobs: list[list[str]], lat
                 job = smp.run([(inst["pubs"][n], None, int(inst["shots"][n])) for n in names])
                 jid = job.job_id()
                 group = group or jid
-                which = f"job {indices[k]}" + (f" instance {inst['instance']}/{pre_twirl}"
+                il = inst.get("instance_list") or []
+                which = f"job {indices[k]}" + ((f" instance {il[0]}/{pre_twirl}" if len(il) == 1 else
+                                                f" instances {il[0]}-{il[-1]}/{pre_twirl}")
                                                if inst["instance"] is not None else "")
                 T._log(f"{which}: {jid} with {len(names)} pubs {names}", log)
                 meta = {"job_id": jid, "backend": T.backend_label(mode) if hasattr(mode, "name") else str(mode),
@@ -927,6 +970,9 @@ def submit(mode, pubs: dict, info: dict, shots: dict, jobs: list[list[str]], lat
                 if inst["instance"] is not None:
                     meta["twirl"] = {"instances": int(pre_twirl), "instance": inst["instance"],
                                      "group": group, "of": list(jobs[k]), "seed": int(twirl_seed)}
+                    if len(inst["instance_list"]) > 1:
+                        meta["twirl"]["instance_list"] = list(inst["instance_list"])
+                        meta["twirl"]["per_job"] = int(twirl_per_job)
                 path = os.path.join(out_dir, f"htq_job_{jid}.json")
                 meta["guard"] = "pending"
                 with open(path, "w") as f:       # preserve the id even if polling is interrupted
@@ -1039,12 +1085,12 @@ def fetch(job, meta: dict, out_dir: str = "data/hw", log=None, group=None, meta_
     tw = meta.get("twirl")
     if group is None:
         group = [(job, meta)]
-    if tw and len(group) < tw["instances"]:
-        have = {m["twirl"]["instance"] for _, m in group}
-        group = list(group) + [(m["job_id"], m) for m in twirl_group_metas(meta, meta_dir or out_dir)
-                               if m["twirl"]["instance"] not in have]
     if tw:
-        have = sorted(m["twirl"]["instance"] for _, m in group)
+        have = {i for _, m in group for i in twirl_instances_of(m)}
+        if len(have) < tw["instances"]:
+            group = list(group) + [(m["job_id"], m) for m in twirl_group_metas(meta, meta_dir or out_dir)
+                                   if not set(twirl_instances_of(m)) & have]
+        have = sorted(i for _, m in group for i in twirl_instances_of(m))
         if have != list(range(tw["instances"])):
             raise ValueError(f"twirl group {tw['group']}: instances {have} of {tw['instances']} "
                              f"found in {out_dir}; fetch needs every instance job's record")
@@ -1055,18 +1101,22 @@ def fetch(job, meta: dict, out_dir: str = "data/hw", log=None, group=None, meta_
         ids.append(m["job_id"])
         problems += [(f"{m['job_id']}:{n}", w) for n, w in probs]
         for name, arr in arrs.items():
-            base, _ = split_twirl_name(name) if tw else (name, None)
-            parts.setdefault(base, []).append(arr)
-    out = {}
-    for base, arrs in parts.items():
+            base, idx = split_twirl_name(name) if tw else (name, None)
+            parts.setdefault(base, []).append((-1 if idx is None else idx, arr))
+    out, counts = {}, {}
+    for base, items in parts.items():
+        items = sorted(items, key=lambda x: x[0])       # instance order, packed or not
+        arrs = [a for _, a in items]
         widths = {a.shape[1] for a in arrs}
         if len(widths) > 1:
             problems.append((base, f"instance widths differ: {sorted(widths)}"))
         out[base] = np.concatenate(arrs, axis=0) if len(arrs) > 1 else arrs[0]
+        counts[base] = [int(len(a)) for a in arrs]
     # write BEFORE validating: a shape surprise must never lose a paid result
     os.makedirs(out_dir, exist_ok=True)
     file_id = tw["group"] if tw else meta["job_id"]
-    extra = {"twirl_jobs": np.array(ids), "twirl_instances": int(tw["instances"])} if tw else {}
+    extra = ({"twirl_jobs": np.array(ids), "twirl_instances": int(tw["instances"]),
+              "twirl_counts": np.array(json.dumps(counts))} if tw else {})
     path = os.path.join(out_dir, f"htq_bits_{file_id}.npz")
     np.savez_compressed(path, job_id=file_id, backend=meta["backend"],
                         pub_names=np.array(list(out)), **extra, **out)
