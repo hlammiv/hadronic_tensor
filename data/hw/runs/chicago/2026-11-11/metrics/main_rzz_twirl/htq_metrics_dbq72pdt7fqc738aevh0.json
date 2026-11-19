@@ -1,0 +1,242 @@
+{
+  "job_id": "dbq72pdt7fqc738aevh0",
+  "backend": "ibm_chicago",
+  "status": "DONE",
+  "metrics": {
+    "caller": "qiskit_ibm_runtime~sampler.py",
+    "qiskit_version": "qiskit_ibm_runtime-0.47.0,qiskit-2.5.0*,qiskit_aer-0.17.2*",
+    "timestamps": {
+      "created": "2026-11-11T13:45:09.613547Z",
+      "finished": "2026-11-11T15:16:06.341326Z",
+      "running": "2026-11-11T14:02:06.527847Z"
+    },
+    "bss": {
+      "seconds": 5
+    },
+    "usage": {
+      "quantum_seconds": 5,
+      "seconds": 5,
+      "status": "complete"
+    }
+  },
+  "result_metadata": {
+    "execution": {
+      "execution_spans": {
+        "__type__": "ExecutionSpans",
+        "__value__": {
+          "spans": [
+            {
+              "__type__": "TwirledSliceSpanV2",
+              "__value__": {
+                "start": {
+                  "__type__": "datetime",
+                  "__value__": "2026-11-11T15:15:57.876130"
+                },
+                "stop": {
+                  "__type__": "datetime",
+                  "__value__": "2026-11-11T15:15:59.176141"
+                },
+                "data_slices": {
+                  "6": [
+                    [
+                      32,
+                      118
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    118,
+                    3750
+                  ]
+                }
+              }
+            },
+            {
+              "__type__": "TwirledSliceSpanV2",
+              "__value__": {
+                "start": {
+                  "__type__": "datetime",
+                  "__value__": "2026-11-11T15:15:59.181805"
+                },
+                "stop": {
+                  "__type__": "datetime",
+                  "__value__": "2026-11-11T15:16:01.951421"
+                },
+                "data_slices": {
+                  "0": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ],
+                  "1": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ],
+                  "2": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ],
+                  "3": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ],
+                  "4": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ],
+                  "5": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "version": 2
+  },
+  "pub_result_metadata": {
+    "prod-bridge.prod_k1.26_s0.75_ns50:j0_t0.0_Z#1": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "prod-bridge.prod_k1.26_s0.75_ns50:j0_t0.0_XYA#1": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "prod-bridge.prod_k1.26_s0.75_ns50:j0_t0.0_XYB#1": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "prod-bridge.prod_k1.26_s0.75_ns50:j0d_t0.0_Z#1": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "prod-bridge.prod_k1.26_s0.75_ns50:j0d_t0.0_XYA#1": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "prod-bridge.prod_k1.26_s0.75_ns50:j0d_t0.0_XYB#1": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "prod-bridge.prod_k1.26_s0.75_ns50:plain_t0.0_Z#1": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    }
+  },
+  "execution_spans": [
+    {
+      "start": "2026-11-11T15:15:57.876130+00:00",
+      "stop": "2026-11-11T15:15:59.176141+00:00",
+      "type": "TwirledSliceSpanV2",
+      "size": 3776,
+      "pub_indices": [
+        6
+      ],
+      "pub_sizes": {
+        "prod-bridge.prod_k1.26_s0.75_ns50:plain_t0.0_Z#1": 3750
+      }
+    },
+    {
+      "start": "2026-11-11T15:15:59.181805+00:00",
+      "stop": "2026-11-11T15:16:01.951421+00:00",
+      "type": "TwirledSliceSpanV2",
+      "size": 90048,
+      "pub_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "pub_sizes": {
+        "prod-bridge.prod_k1.26_s0.75_ns50:j0_t0.0_Z#1": 15000,
+        "prod-bridge.prod_k1.26_s0.75_ns50:j0_t0.0_XYA#1": 15000,
+        "prod-bridge.prod_k1.26_s0.75_ns50:j0_t0.0_XYB#1": 15000,
+        "prod-bridge.prod_k1.26_s0.75_ns50:j0d_t0.0_Z#1": 15000,
+        "prod-bridge.prod_k1.26_s0.75_ns50:j0d_t0.0_XYA#1": 15000,
+        "prod-bridge.prod_k1.26_s0.75_ns50:j0d_t0.0_XYB#1": 15000
+      }
+    }
+  ]
+}

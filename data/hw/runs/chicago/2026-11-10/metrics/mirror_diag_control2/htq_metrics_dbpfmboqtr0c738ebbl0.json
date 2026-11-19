@@ -1,0 +1,85 @@
+{
+  "job_id": "dbpfmboqtr0c738ebbl0",
+  "backend": "ibm_chicago",
+  "status": "DONE",
+  "metrics": {
+    "caller": "qiskit_ibm_runtime~sampler.py",
+    "qiskit_version": "qiskit_ibm_runtime-0.47.0,qiskit-2.5.0*,qiskit_aer-0.17.2*",
+    "timestamps": {
+      "created": "2026-11-10T11:08:31.321167Z",
+      "finished": "2026-11-10T12:07:58.77916Z",
+      "running": "2026-11-10T11:13:01.039068Z"
+    },
+    "bss": {
+      "seconds": 4
+    },
+    "usage": {
+      "quantum_seconds": 4,
+      "seconds": 4,
+      "status": "complete"
+    }
+  },
+  "result_metadata": {
+    "execution": {
+      "execution_spans": {
+        "__type__": "ExecutionSpans",
+        "__value__": {
+          "spans": [
+            {
+              "__type__": "TwirledSliceSpanV2",
+              "__value__": {
+                "start": {
+                  "__type__": "datetime",
+                  "__value__": "2026-11-10T12:07:53.063472"
+                },
+                "stop": {
+                  "__type__": "datetime",
+                  "__value__": "2026-11-10T12:07:55.379732"
+                },
+                "data_slices": {
+                  "0": [
+                    [
+                      32,
+                      1875
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    1875,
+                    60000
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "version": 2
+  },
+  "pub_result_metadata": {
+    "mirror-diag.prod_k1.26_s0.75_ns50:j0_t0.0_Z": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    }
+  },
+  "execution_spans": [
+    {
+      "start": "2026-11-10T12:07:53.063472+00:00",
+      "stop": "2026-11-10T12:07:55.379732+00:00",
+      "type": "TwirledSliceSpanV2",
+      "size": 60000,
+      "pub_indices": [
+        0
+      ],
+      "pub_sizes": {
+        "mirror-diag.prod_k1.26_s0.75_ns50:j0_t0.0_Z": 60000
+      }
+    }
+  ]
+}

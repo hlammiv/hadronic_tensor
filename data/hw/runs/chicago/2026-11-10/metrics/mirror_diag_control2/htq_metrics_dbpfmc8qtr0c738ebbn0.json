@@ -1,0 +1,195 @@
+{
+  "job_id": "dbpfmc8qtr0c738ebbn0",
+  "backend": "ibm_chicago",
+  "status": "DONE",
+  "metrics": {
+    "caller": "qiskit_ibm_runtime~sampler.py",
+    "qiskit_version": "qiskit_ibm_runtime-0.47.0,qiskit-2.5.0*,qiskit_aer-0.17.2*",
+    "timestamps": {
+      "created": "2026-11-10T11:08:33.490289Z",
+      "finished": "2026-11-10T12:08:19.802254Z",
+      "running": "2026-11-10T11:23:54.699376Z"
+    },
+    "bss": {
+      "seconds": 14
+    },
+    "usage": {
+      "quantum_seconds": 14,
+      "seconds": 14,
+      "status": "complete"
+    }
+  },
+  "result_metadata": {
+    "execution": {
+      "execution_spans": {
+        "__type__": "ExecutionSpans",
+        "__value__": {
+          "spans": [
+            {
+              "__type__": "TwirledSliceSpanV2",
+              "__value__": {
+                "start": {
+                  "__type__": "datetime",
+                  "__value__": "2026-11-10T12:07:56.098808"
+                },
+                "stop": {
+                  "__type__": "datetime",
+                  "__value__": "2026-11-10T12:08:07.887964"
+                },
+                "data_slices": {
+                  "0": [
+                    [
+                      32,
+                      1875
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    1875,
+                    60000
+                  ],
+                  "1": [
+                    [
+                      32,
+                      1875
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    1875,
+                    60000
+                  ],
+                  "2": [
+                    [
+                      32,
+                      1875
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    1875,
+                    60000
+                  ],
+                  "3": [
+                    [
+                      32,
+                      1875
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    1875,
+                    60000
+                  ],
+                  "4": [
+                    [
+                      32,
+                      1875
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    1875,
+                    60000
+                  ],
+                  "5": [
+                    [
+                      32,
+                      1875
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    1875,
+                    60000
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "version": 2
+  },
+  "pub_result_metadata": {
+    "mirror-diag.prod_k1.26_s0.75_ns50:j0_t2.0_Z": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "mirror-diag.prod_k1.26_s0.75_ns50:j0_m2.0_Z": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "mirror-diag.prod_k1.26_s0.75_ns50:j0_t4.0_Z": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "mirror-diag.prod_k1.26_s0.75_ns50:j0_m4.0_Z": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "mirror-diag.prod_k1.26_s0.75_ns50:j0_t6.0_Z": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "mirror-diag.prod_k1.26_s0.75_ns50:j0_m6.0_Z": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    }
+  },
+  "execution_spans": [
+    {
+      "start": "2026-11-10T12:07:56.098808+00:00",
+      "stop": "2026-11-10T12:08:07.887964+00:00",
+      "type": "TwirledSliceSpanV2",
+      "size": 360000,
+      "pub_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "pub_sizes": {
+        "mirror-diag.prod_k1.26_s0.75_ns50:j0_t2.0_Z": 60000,
+        "mirror-diag.prod_k1.26_s0.75_ns50:j0_m2.0_Z": 60000,
+        "mirror-diag.prod_k1.26_s0.75_ns50:j0_t4.0_Z": 60000,
+        "mirror-diag.prod_k1.26_s0.75_ns50:j0_m4.0_Z": 60000,
+        "mirror-diag.prod_k1.26_s0.75_ns50:j0_t6.0_Z": 60000,
+        "mirror-diag.prod_k1.26_s0.75_ns50:j0_m6.0_Z": 60000
+      }
+    }
+  ]
+}

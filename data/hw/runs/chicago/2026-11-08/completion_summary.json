@@ -1,0 +1,55 @@
+{
+  "status": "complete",
+  "completed_utc": "2026-11-08T21:38:47.898045+00:00",
+  "variants": {
+    "mirror_diag_control": {
+      "jobs": 2,
+      "pubs": 7,
+      "shots": 420000,
+      "qpu_seconds": 18.0
+    },
+    "mirror_diag_eps05": {
+      "jobs": 2,
+      "pubs": 7,
+      "shots": 420000,
+      "qpu_seconds": 18.0
+    }
+  },
+  "total_jobs": 4,
+  "total_pubs": 14,
+  "total_shots": 840000,
+  "total_qpu_seconds": 36.0,
+  "twirling_outcome": "Skipped after Runtime error 1519; zero QPU usage",
+  "raw_validation": "PASS",
+  "raw_sha256_files": 4,
+  "execution_timestamps": [
+    {
+      "variant": "mirror_diag_control",
+      "job_id": "dbodrdc4148s739sssg0",
+      "created": "2026-11-08T20:38:13.409633Z",
+      "finished": "2026-11-08T21:33:42.961916Z",
+      "running": "2026-11-08T21:33:11.280441Z"
+    },
+    {
+      "variant": "mirror_diag_control",
+      "job_id": "dbodrdoou4as73crvpb0",
+      "created": "2026-11-08T20:38:15.448026Z",
+      "finished": "2026-11-08T21:35:01.777311Z",
+      "running": "2026-11-08T21:33:11.870854Z"
+    },
+    {
+      "variant": "mirror_diag_eps05",
+      "job_id": "dbodrus4148s739sst9g",
+      "created": "2026-11-08T20:39:23.629461Z",
+      "finished": "2026-11-08T21:36:53.364464Z",
+      "running": "2026-11-08T21:35:04.552277Z"
+    },
+    {
+      "variant": "mirror_diag_eps05",
+      "job_id": "dbodrv8ou4as73crvpvg",
+      "created": "2026-11-08T20:39:25.463057Z",
+      "finished": "2026-11-08T21:37:40.365728Z",
+      "running": "2026-11-08T21:35:26.635094Z"
+    }
+  ]
+}

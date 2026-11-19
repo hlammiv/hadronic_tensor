@@ -1,0 +1,72 @@
+{
+  "jobs": [
+    {
+      "record": "jobs/mirror_diag_control2/htq_job_dbpf0p8ou4as73cti9j0.json",
+      "job_id": "dbpf0p8ou4as73cti9j0",
+      "status": "CANCELLED",
+      "backend": "ibm_chicago",
+      "usage_estimation": {
+        "quantum_seconds": 19.501256584
+      },
+      "metrics": {
+        "caller": "qiskit_ibm_runtime~sampler.py",
+        "qiskit_version": "qiskit_ibm_runtime-0.47.0,qiskit-2.5.0*,qiskit_aer-0.17.2*",
+        "timestamps": {
+          "created": "2026-11-10T10:22:29.388105Z",
+          "finished": "2026-11-10T10:23:30.686389Z",
+          "running": null
+        },
+        "bss": {
+          "seconds": 0
+        },
+        "usage": {
+          "quantum_seconds": 0,
+          "seconds": 0,
+          "status": "pending"
+        }
+      },
+      "archived_record": "cancelled_jobs/mirror_diag_control2/htq_job_dbpf0p8ou4as73cti9j0.json"
+    },
+    {
+      "record": "jobs/mirror_diag_twirl/htq_job_dbpf1flt7fqc7389aorg.json",
+      "job_id": "dbpf1flt7fqc7389aorg",
+      "status": "CANCELLED",
+      "backend": "ibm_chicago",
+      "usage_estimation": {
+        "quantum_seconds": null
+      },
+      "metrics": {
+        "caller": "qiskit_ibm_runtime~sampler.py",
+        "qiskit_version": "qiskit_ibm_runtime-0.47.0,qiskit-2.5.0*,qiskit_aer-0.17.2*",
+        "timestamps": {
+          "created": "2026-11-10T10:23:58.42189Z",
+          "finished": "2026-11-10T10:24:59.591187Z",
+          "running": null
+        },
+        "bss": {
+          "seconds": 0
+        },
+        "usage": {
+          "quantum_seconds": 0,
+          "seconds": 0,
+          "status": "pending"
+        }
+      },
+      "archived_record": "cancelled_jobs/mirror_diag_twirl/htq_job_dbpf1flt7fqc7389aorg.json"
+    }
+  ],
+  "remaining_seconds": 432097,
+  "calibration": "2026-11-10 09:49:05+00:00",
+  "backend_status": {
+    "backend_name": "ibm_chicago",
+    "backend_version": "",
+    "operational": true,
+    "pending_jobs": 1017,
+    "status_msg": "active"
+  },
+  "recovery": {
+    "retry_both_complete_variants": true,
+    "recommended_submission_flag": "--no-strict-guard",
+    "resubmitted_by_assistant": false
+  }
+}

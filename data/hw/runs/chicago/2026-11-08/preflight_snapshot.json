@@ -1,0 +1,14 @@
+{
+  "captured_utc": "2026-11-08T20:34:50.655096+00:00",
+  "backend": "ibm_chicago",
+  "status": {
+    "backend_name": "ibm_chicago",
+    "backend_version": "",
+    "operational": true,
+    "pending_jobs": 499,
+    "status_msg": "active"
+  },
+  "last_update_date": "2026-11-08T19:50:22+00:00",
+  "usage_remaining_seconds": 434930,
+  "calibration_file": "calibration/backend_properties_2026-11-08T19-50-22Z_4a9b7074.json"
+}

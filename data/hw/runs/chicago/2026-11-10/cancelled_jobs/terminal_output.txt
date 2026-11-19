@@ -1,0 +1,143 @@
+󰀵 declanmillar …/hadronic_tensor   tier3-calibration-checks !?   v3.14.6   10:21  ❯ cd /Users/declanmillar/Projects/fermilab/hadronic-tensor/hadronic_tensor
+
+HTQ_RUN=data/hw/runs/chicago/2026-11-10
+HTQ_GLOBAL=(--ns 50 --max-readout-error 0.05 --max-2q-error 0.02
+            --min-t2 100 --twirl-gates off --mirror-eps 1e-8)
+HTQ_EXPERIMENT=(--target ibm_chicago --basis rzz --mode ladder
+                --preset mirror-diag --rep-time 6.2e-5)
+
+󰀵 declanmillar …/hadronic_tensor   tier3-calibration-checks !?   v3.14.6   10:21  ❯ .venv/bin/python -m htq_hw "${HTQ_GLOBAL[@]}" submit \
+  "${HTQ_EXPERIMENT[@]}" --real --confirm ibm_chicago \
+  --require-layout "$HTQ_RUN/acceptance_mirror_diag_control2.json" \
+  --tag mirror-diag-control2 \
+  --out "$HTQ_RUN/jobs/mirror_diag_control2"
+
+.venv/bin/python -m htq_hw "${HTQ_GLOBAL[@]}" --pre-twirl 4 submit \
+  "${HTQ_EXPERIMENT[@]}" --real --confirm ibm_chicago \
+  --require-layout "$HTQ_RUN/acceptance_mirror_diag_control2.json" \
+  --tag mirror-diag-twirl \
+  --out "$HTQ_RUN/jobs/mirror_diag_twirl"
+[   0.2s] mirror block total angle set to 1e-08 (default 1e-08)
+[   4.9s] operational graph: 1 qubit(s) and 27 edge(s) excluded (191/218 edges live)
+[   4.9s] embedding avoids 1 qubit(s) and 27 coupler(s): {'q67': 'readout 0.0662', 'e(2, 12)': 'rzz error 1 (uncalibrated)', 'e(3, 4)': 'rzz error 0.0387', 'e(10, 11)': 'rzz error 1 (uncalibrated)', 'e(14, 24)': 'rzz error 0.0217', 'e(23, 24)': 'rzz error 1 (uncalibrated)', 'e(24, 25)': 'rzz error 0.0306', 'e(24, 34)': 'rzz error 1 (uncalibrated)', 'e(26, 27)': 'rzz error 1 (uncalibrated)', 'e(45, 55)': 'rzz error 0.0211', 'e(54, 64)': 'rzz error 0.0205', 'e(54, 55)': 'rzz error 1 (uncalibrated)', 'e(57, 67)': 'rzz error 1 (uncalibrated)', 'e(63, 64)': 'rzz error 1 (uncalibrated)', 'e(64, 65)': 'rzz error 1 (uncalibrated)', 'e(64, 74)': 'cz error 0.021', 'e(66, 67)': 'rzz error 0.193', 'e(66, 76)': 'rzz error 1 (uncalibrated)', 'e(67, 68)': 'rzz error 1 (uncalibrated)', 'e(67, 77)': 'rzz error 1 (uncalibrated)', 'e(75, 76)': 'rzz error 1 (uncalibrated)', 'e(76, 77)': 'rzz error 1 (uncalibrated)', 'e(76, 86)': 'rzz error 0.0349', 'e(94, 104)': 'rzz error 0.0378', 'e(103, 104)': 'rzz error 0.0376', 'e(104, 105)': 'rzz error 0.0515', 'e(104, 114)': 'rzz error 0.0732', 'e(115, 116)': 'cz error 0.0261'}
+[  16.8s] grow_cycles: 235 cycle(s) of length 50 in 11.9s (150918 expansions, stopped by beam_full)
+[  16.9s] T2 floor 100 us rejects 5 of 8 candidate layout(s), including the best-scoring one (centre q73 307 us, ancilla q72 262 us, core min 49 us); taking centre q53 164 us, ancilla q63 315 us, core min 135 us
+[  16.9s] embedding ladder: site 24 -> q53, ancilla -> q63, 101 edges (score 1.472, 8 candidates)
+[  16.9s] Hadamard-test core T2: centre q53 164 us, ancilla q63 315 us, core min 135 us
+[  16.9s] required layout matches data/hw/runs/chicago/2026-11-10/acceptance_mirror_diag_control2.json (full acceptance WARN)
+[  16.9s] base[J0,rzz]: cache hit 6b9b901f9619f0b312359160
+[  16.9s] step[rzz,rxxryy]: cache hit 365f558db8bda7d4ba19ada6
+REAL submission to ibm_chicago (120q): 2 jobs, 420000 shots
+[  21.6s] budget preflight: campaign ~26 s vs remaining 432097 s (0% of it)
+[  22.4s] Batch dfe3664c-b153-4a37-9ecd-df0e55345b45 open on ibm_chicago
+[  23.2s] job 0: dbpf0p8ou4as73cti9j0 with 1 pubs ['mirror-diag.prod_k1.26_s0.75_ns50:j0_t0.0_Z']
+[  24.0s] budget: estimated None s, remaining 432097.0 s
+[  24.0s] estimate for dbpf0p8ou4as73cti9j0 pending; retrying in 5 s (59 s left)
+[  30.2s] budget: estimated None s, remaining 432097.0 s
+[  30.2s] estimate for dbpf0p8ou4as73cti9j0 pending; retrying in 5 s (53 s left)
+[  36.0s] budget: estimated None s, remaining 432097.0 s
+[  36.0s] estimate for dbpf0p8ou4as73cti9j0 pending; retrying in 5 s (47 s left)
+[  41.8s] budget: estimated None s, remaining 432097.0 s
+[  41.8s] estimate for dbpf0p8ou4as73cti9j0 pending; retrying in 5 s (41 s left)
+[  47.4s] budget: estimated None s, remaining 432097.0 s
+[  47.4s] estimate for dbpf0p8ou4as73cti9j0 pending; retrying in 5 s (36 s left)
+[  53.1s] budget: estimated None s, remaining 432097.0 s
+[  53.1s] estimate for dbpf0p8ou4as73cti9j0 pending; retrying in 5 s (30 s left)
+[  58.8s] budget: estimated None s, remaining 432097.0 s
+[  58.8s] estimate for dbpf0p8ou4as73cti9j0 pending; retrying in 5 s (24 s left)
+[  64.4s] budget: estimated None s, remaining 432097.0 s
+[  64.4s] estimate for dbpf0p8ou4as73cti9j0 pending; retrying in 5 s (19 s left)
+[  70.0s] budget: estimated None s, remaining 432097.0 s
+[  70.0s] estimate for dbpf0p8ou4as73cti9j0 pending; retrying in 5 s (13 s left)
+[  75.6s] budget: estimated None s, remaining 432097.0 s
+[  75.6s] estimate for dbpf0p8ou4as73cti9j0 pending; retrying in 5 s (8 s left)
+[  81.1s] budget: estimated None s, remaining 432097.0 s
+[  81.1s] estimate for dbpf0p8ou4as73cti9j0 pending; retrying in 2.10143 s (2 s left)
+[  83.8s] budget: estimated None s, remaining 432097.0 s
+[  83.8s] estimate for dbpf0p8ou4as73cti9j0 still unavailable after 60 s wait
+[  85.9s] STOPPED at job 0 (unverifiable); 1 job(s) not submitted. Retry the cancelled job too: --only-jobs 0 1
+[   0.2s] mirror block total angle set to 1e-08 (default 1e-08)
+[   4.4s] operational graph: 1 qubit(s) and 27 edge(s) excluded (191/218 edges live)
+[   4.4s] embedding avoids 1 qubit(s) and 27 coupler(s): {'q67': 'readout 0.0662', 'e(2, 12)': 'rzz error 1 (uncalibrated)', 'e(3, 4)': 'rzz error 0.0387', 'e(10, 11)': 'rzz error 1 (uncalibrated)', 'e(14, 24)': 'rzz error 0.0217', 'e(23, 24)': 'rzz error 1 (uncalibrated)', 'e(24, 25)': 'rzz error 0.0306', 'e(24, 34)': 'rzz error 1 (uncalibrated)', 'e(26, 27)': 'rzz error 1 (uncalibrated)', 'e(45, 55)': 'rzz error 0.0211', 'e(54, 64)': 'rzz error 0.0205', 'e(54, 55)': 'rzz error 1 (uncalibrated)', 'e(57, 67)': 'rzz error 1 (uncalibrated)', 'e(63, 64)': 'rzz error 1 (uncalibrated)', 'e(64, 65)': 'rzz error 1 (uncalibrated)', 'e(64, 74)': 'cz error 0.021', 'e(66, 67)': 'rzz error 0.193', 'e(66, 76)': 'rzz error 1 (uncalibrated)', 'e(67, 68)': 'rzz error 1 (uncalibrated)', 'e(67, 77)': 'rzz error 1 (uncalibrated)', 'e(75, 76)': 'rzz error 1 (uncalibrated)', 'e(76, 77)': 'rzz error 1 (uncalibrated)', 'e(76, 86)': 'rzz error 0.0349', 'e(94, 104)': 'rzz error 0.0378', 'e(103, 104)': 'rzz error 0.0376', 'e(104, 105)': 'rzz error 0.0515', 'e(104, 114)': 'rzz error 0.0732', 'e(115, 116)': 'cz error 0.0261'}
+[  16.3s] grow_cycles: 235 cycle(s) of length 50 in 11.9s (150918 expansions, stopped by beam_full)
+[  16.4s] T2 floor 100 us rejects 5 of 8 candidate layout(s), including the best-scoring one (centre q73 307 us, ancilla q72 262 us, core min 49 us); taking centre q53 164 us, ancilla q63 315 us, core min 135 us
+[  16.4s] embedding ladder: site 24 -> q53, ancilla -> q63, 101 edges (score 1.472, 8 candidates)
+[  16.4s] Hadamard-test core T2: centre q53 164 us, ancilla q63 315 us, core min 135 us
+[  16.4s] required layout matches data/hw/runs/chicago/2026-11-10/acceptance_mirror_diag_control2.json (full acceptance WARN)
+[  16.4s] base[J0,rzz]: cache hit 6b9b901f9619f0b312359160
+[  16.4s] step[rzz,rxxryy]: cache hit 365f558db8bda7d4ba19ada6
+REAL submission to ibm_chicago (120q): 2 jobs, 420000 shots
+[  24.2s] budget preflight: campaign ~26 s vs remaining 432097 s (0% of it)
+[  25.0s] Batch 78dcebd4-b037-4abc-a20e-b4ca1dce695d open on ibm_chicago
+[  26.1s] job 0 instance 0/4: dbpf1flt7fqc7389aorg with 1 pubs ['mirror-diag.prod_k1.26_s0.75_ns50:j0_t0.0_Z#0']
+[  26.8s] budget: estimated None s, remaining 432097.0 s
+[  26.8s] estimate for dbpf1flt7fqc7389aorg pending; retrying in 5 s (59 s left)
+[  33.5s] budget: estimated None s, remaining 432097.0 s
+[  33.5s] estimate for dbpf1flt7fqc7389aorg pending; retrying in 5 s (53 s left)
+[  39.2s] budget: estimated None s, remaining 432097.0 s
+[  39.2s] estimate for dbpf1flt7fqc7389aorg pending; retrying in 5 s (47 s left)
+[  44.8s] budget: estimated None s, remaining 432097.0 s
+[  44.8s] estimate for dbpf1flt7fqc7389aorg pending; retrying in 5 s (41 s left)
+[  50.3s] budget: estimated None s, remaining 432097.0 s
+[  50.3s] estimate for dbpf1flt7fqc7389aorg pending; retrying in 5 s (36 s left)
+[  56.5s] budget: estimated None s, remaining 432097.0 s
+[  56.5s] estimate for dbpf1flt7fqc7389aorg pending; retrying in 5 s (30 s left)
+[  62.0s] budget: estimated None s, remaining 432097.0 s
+[  62.0s] estimate for dbpf1flt7fqc7389aorg pending; retrying in 5 s (24 s left)
+[  67.6s] budget: estimated None s, remaining 432097.0 s
+[  67.6s] estimate for dbpf1flt7fqc7389aorg pending; retrying in 5 s (18 s left)
+[  73.3s] budget: estimated None s, remaining 432097.0 s
+[  73.3s] estimate for dbpf1flt7fqc7389aorg pending; retrying in 5 s (13 s left)
+[  78.8s] budget: estimated None s, remaining 432097.0 s
+[  78.8s] estimate for dbpf1flt7fqc7389aorg pending; retrying in 5 s (7 s left)
+[  84.4s] budget: estimated None s, remaining 432097.0 s
+[  84.4s] estimate for dbpf1flt7fqc7389aorg pending; retrying in 1.71024 s (2 s left)
+[  86.7s] budget: estimated None s, remaining 432097.0 s
+[  86.7s] estimate for dbpf1flt7fqc7389aorg still unavailable after 60 s wait
+[  88.7s] STOPPED at job 0 (unverifiable); 1 job(s) not submitted. Retry the cancelled job too: --only-jobs 0 1
+
+󰀵 declanmillar …/hadronic_tensor   tier3-calibration-checks !?   v3.14.6   10:25   in 2m55s547ms ❯ .venv/bin/python -m htq_hw fetch \
+  "$HTQ_RUN"/jobs/mirror_diag_control2/htq_job_*.json \
+  --out "$HTQ_RUN/raw/mirror_diag_control2"
+
+.venv/bin/python -m htq_hw fetch \
+  "$HTQ_RUN"/jobs/mirror_diag_twirl/htq_job_*.json \
+  --out "$HTQ_RUN/raw/mirror_diag_twirl"
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/declanmillar/Projects/fermilab/hadronic-tensor/hadronic_tensor/htq_hw/__main__.py", line 931, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/Users/declanmillar/Projects/fermilab/hadronic-tensor/hadronic_tensor/htq_hw/__main__.py", line 927, in main
+    args.fn(args)
+  File "/Users/declanmillar/Projects/fermilab/hadronic-tensor/hadronic_tensor/htq_hw/__main__.py", line 454, in cmd_fetch
+    CP.fetch_all(items, args.out, log=log, meta_dir=os.path.dirname(os.path.abspath(args.meta[0])))
+  File "/Users/declanmillar/Projects/fermilab/hadronic-tensor/hadronic_tensor/htq_hw/campaign.py", line 1092, in fetch_all
+    paths.append(fetch(j, m, out_dir, log=log, group=groups[key], meta_dir=meta_dir))
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/declanmillar/Projects/fermilab/hadronic-tensor/hadronic_tensor/htq_hw/campaign.py", line 1054, in fetch
+    arrs, probs = _pub_arrays(j, m)
+                  ^^^^^^^^^^^^^^^^^
+  File "/Users/declanmillar/Projects/fermilab/hadronic-tensor/hadronic_tensor/htq_hw/campaign.py", line 987, in _pub_arrays
+    res = job.result()
+          ^^^^^^^^^^^^
+  File "/Users/declanmillar/Projects/fermilab/hadronic-tensor/hadronic_tensor/.venv/lib/python3.12/site-packages/qiskit_ibm_runtime/runtime_job_v2.py", line 140, in result
+    raise RuntimeInvalidStateError(
+qiskit_ibm_runtime.exceptions.RuntimeInvalidStateError: 'Unable to retrieve result for job dbpf0p8ou4as73cti9j0. Job was cancelled.'
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/declanmillar/Projects/fermilab/hadronic-tensor/hadronic_tensor/htq_hw/__main__.py", line 931, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/Users/declanmillar/Projects/fermilab/hadronic-tensor/hadronic_tensor/htq_hw/__main__.py", line 927, in main
+    args.fn(args)
+  File "/Users/declanmillar/Projects/fermilab/hadronic-tensor/hadronic_tensor/htq_hw/__main__.py", line 454, in cmd_fetch
+    CP.fetch_all(items, args.out, log=log, meta_dir=os.path.dirname(os.path.abspath(args.meta[0])))
+  File "/Users/declanmillar/Projects/fermilab/hadronic-tensor/hadronic_tensor/htq_hw/campaign.py", line 1092, in fetch_all
+    paths.append(fetch(j, m, out_dir, log=log, group=groups[key], meta_dir=meta_dir))
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/declanmillar/Projects/fermilab/hadronic-tensor/hadronic_tensor/htq_hw/campaign.py", line 1049, in fetch
+    raise ValueError(f"twirl group {tw['group']}: instances {have} of {tw['instances']} "
+ValueError: twirl group dbpf1flt7fqc7389aorg: instances [0] of 4 found in data/hw/runs/chicago/2026-11-10/raw/mirror_diag_twirl; fetch needs every instance job's record

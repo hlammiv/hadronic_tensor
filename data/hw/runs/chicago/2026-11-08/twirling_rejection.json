@@ -1,0 +1,54 @@
+{
+  "recorded_utc": "2026-11-08T20:40:38.944542+00:00",
+  "outcome": "Skipped as requested after Runtime error 1519; original submission metadata preserved unchanged under failed_jobs.",
+  "jobs": [
+    {
+      "variant": "mirror_diag_twirl",
+      "job_index": 0,
+      "job_id": "dbodrmgou4as73crvplg",
+      "status": "ERROR",
+      "error_message": "Job dbodrmgou4as73crvplg has failed:\nError code 1519; Job not valid. \"Gate twirling does not support fractional gates. -- If the PEC, PEA, or gate twirling option is selected, then make sure to remove all fractional gates from the circuits. If you are using qiskit-ibm-runtime version 0.24.0 or higher, you can use the new 'use_fractional_gates' keyword when retrieving a backend instance. When set to False, this returns a backend that does not have fractional gates in its target and therefore ensures the transpiler would not unroll any gates to fractional gates. -- https://ibm.biz/error_codes#1519",
+      "metrics": {
+        "caller": "qiskit_ibm_runtime~sampler.py",
+        "qiskit_version": "qiskit_ibm_runtime-0.47.0,qiskit-2.5.0*,qiskit_aer-0.17.2*",
+        "timestamps": {
+          "created": "2026-11-08T20:38:50.085022Z",
+          "finished": "2026-11-08T20:38:50.905838Z",
+          "running": null
+        },
+        "bss": {
+          "seconds": 0
+        },
+        "usage": {
+          "quantum_seconds": 0,
+          "seconds": 0
+        }
+      },
+      "job_record": "failed_jobs/mirror_diag_twirl/htq_job_dbodrmgou4as73crvplg.json"
+    },
+    {
+      "variant": "mirror_diag_twirl",
+      "job_index": 1,
+      "job_id": "dbodrn5t7fqc7387nkq0",
+      "status": "ERROR",
+      "error_message": "Job dbodrn5t7fqc7387nkq0 has failed:\nError code 1519; Job not valid. \"Gate twirling does not support fractional gates. -- If the PEC, PEA, or gate twirling option is selected, then make sure to remove all fractional gates from the circuits. If you are using qiskit-ibm-runtime version 0.24.0 or higher, you can use the new 'use_fractional_gates' keyword when retrieving a backend instance. When set to False, this returns a backend that does not have fractional gates in its target and therefore ensures the transpiler would not unroll any gates to fractional gates. -- https://ibm.biz/error_codes#1519",
+      "metrics": {
+        "caller": "qiskit_ibm_runtime~sampler.py",
+        "qiskit_version": "qiskit_ibm_runtime-0.47.0,qiskit-2.5.0*,qiskit_aer-0.17.2*",
+        "timestamps": {
+          "created": "2026-11-08T20:38:52.336634Z",
+          "finished": "2026-11-08T20:38:56.885876Z",
+          "running": null
+        },
+        "bss": {
+          "seconds": 0
+        },
+        "usage": {
+          "quantum_seconds": 0,
+          "seconds": 0
+        }
+      },
+      "job_record": "failed_jobs/mirror_diag_twirl/htq_job_dbodrn5t7fqc7387nkq0.json"
+    }
+  ]
+}

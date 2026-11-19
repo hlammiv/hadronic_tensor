@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "recorded_utc": "2026-11-08T20:42:47.334913+00:00",
+  "audit_scope": "Local acceptance and submission provenance, including preserved Runtime rejection records; no hardware-result validation.",
+  "status": "PASS",
+  "git_commit": "03d820b26d4ca50c7199a10e298fca6fe9304807",
+  "backend": "ibm_chicago",
+  "counts": {
+    "requested": {
+      "variants": 3,
+      "jobs": 6,
+      "pubs": 21,
+      "shots": 1260000
+    },
+    "submitted": {
+      "variants": 3,
+      "jobs": 6,
+      "pubs": 21,
+      "shots": 1260000
+    },
+    "supported_queued": {
+      "variants": 2,
+      "jobs": 4,
+      "pubs": 14,
+      "shots": 840000
+    },
+    "failed": {
+      "variants": 1,
+      "jobs": 2,
+      "pubs": 7,
+      "shots": 420000,
+      "qpu_seconds": 0
+    }
+  },
+  "counts_note": "PUB and shot counts describe submitted requests, not completed results. supported_queued reflects the dated local status snapshot.",
+  "status_snapshot": {
+    "record": "job_status.json",
+    "checked_utc": "2026-11-08T20:42:22.443069+00:00"
+  },
+  "checks": {
+    "all_three_full_acceptances_pass_without_warnings": true,
+    "clean_requested_commit": true,
+    "same_101_qubit_layout_in_acceptances_jobs_and_every_pub": true,
+    "exact_variant_options_match_acceptance_and_jobs": true,
+    "requested_cuts_in_acceptance_and_submission_commands": true,
+    "no_manual_qubit_or_edge_exclusions": true,
+    "two_jobs_seven_pubs_420000_shots_per_variant": true,
+    "correct_prod_card_j0_z_readout_x_ancilla_and_times": true,
+    "identity_logical_bit_mapping_101_bits": true,
+    "all_submissions_passed_budget_guard": true,
+    "six_unique_job_ids_match_submission_timeline": true,
+    "failed_job_paths_and_ids_match_rejection_record": true,
+    "failed_jobs_excluded_from_collection_inputs": true,
+    "both_failed_jobs_have_zero_measured_qpu_usage": true
+  },
+  "cuts": {
+    "max_readout_error": 0.05,
+    "max_2q_error": 0.02
+  },
+  "layout_sha256": "9adbb73f63aadf7ead47f13818fc26d9f6590abaa7257cb11f72408554e7326b",
+  "layout_hash_encoding": "UTF-8 compact JSON array, separators=(comma,colon)",
+  "submission_span_seconds": 72.0,
+  "variants": {
+    "mirror_diag_control": {
+      "acceptance_record": "acceptance_mirror_diag_control.json",
+      "options": {
+        "dd": "XY4",
+        "mirror_eps": 1e-08,
+        "twirling_gates": false,
+        "twirling_measure": true
+      },
+      "job_records": [
+        "jobs/mirror_diag_control/htq_job_dbodrdc4148s739sssg0.json",
+        "jobs/mirror_diag_control/htq_job_dbodrdoou4as73crvpb0.json"
+      ],
+      "jobs": 2,
+      "pubs": 7,
+      "shots": 420000,
+      "outcome": "queued_at_status_snapshot"
+    },
+    "mirror_diag_twirl": {
+      "acceptance_record": "acceptance_mirror_diag_twirl.json",
+      "options": {
+        "dd": "XY4",
+        "mirror_eps": 1e-08,
+        "twirling_gates": true,
+        "twirling_measure": true
+      },
+      "job_records": [
+        "failed_jobs/mirror_diag_twirl/htq_job_dbodrmgou4as73crvplg.json",
+        "failed_jobs/mirror_diag_twirl/htq_job_dbodrn5t7fqc7387nkq0.json"
+      ],
+      "jobs": 2,
+      "pubs": 7,
+      "shots": 420000,
+      "outcome": "rejected_by_runtime"
+    },
+    "mirror_diag_eps05": {
+      "acceptance_record": "acceptance_mirror_diag_eps05.json",
+      "options": {
+        "dd": "XY4",
+        "mirror_eps": 0.05,
+        "twirling_gates": false,
+        "twirling_measure": true
+      },
+      "job_records": [
+        "jobs/mirror_diag_eps05/htq_job_dbodrus4148s739sst9g.json",
+        "jobs/mirror_diag_eps05/htq_job_dbodrv8ou4as73crvpvg.json"
+      ],
+      "jobs": 2,
+      "pubs": 7,
+      "shots": 420000,
+      "outcome": "queued_at_status_snapshot"
+    }
+  },
+  "runtime_rejection": {
+    "variant": "mirror_diag_twirl",
+    "error_code": 1519,
+    "reason": "Gate twirling does not support fractional gates.",
+    "qpu_seconds": 0,
+    "record": "twirling_rejection.json",
+    "verbatim_messages": "twirling_rejection.txt"
+  },
+  "completion_and_raw_results_validated": false
+}

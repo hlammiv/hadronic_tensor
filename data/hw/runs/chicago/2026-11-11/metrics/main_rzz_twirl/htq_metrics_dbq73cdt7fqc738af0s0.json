@@ -1,0 +1,195 @@
+{
+  "job_id": "dbq73cdt7fqc738af0s0",
+  "backend": "ibm_chicago",
+  "status": "DONE",
+  "metrics": {
+    "caller": "qiskit_ibm_runtime~sampler.py",
+    "qiskit_version": "qiskit_ibm_runtime-0.47.0,qiskit-2.5.0*,qiskit_aer-0.17.2*",
+    "timestamps": {
+      "created": "2026-11-11T13:46:25.400831Z",
+      "finished": "2026-11-11T15:22:00.196491Z",
+      "running": "2026-11-11T15:20:23.069992Z"
+    },
+    "bss": {
+      "seconds": 6
+    },
+    "usage": {
+      "quantum_seconds": 6,
+      "seconds": 6,
+      "status": "complete"
+    }
+  },
+  "result_metadata": {
+    "execution": {
+      "execution_spans": {
+        "__type__": "ExecutionSpans",
+        "__value__": {
+          "spans": [
+            {
+              "__type__": "TwirledSliceSpanV2",
+              "__value__": {
+                "start": {
+                  "__type__": "datetime",
+                  "__value__": "2026-11-11T15:21:52.348507"
+                },
+                "stop": {
+                  "__type__": "datetime",
+                  "__value__": "2026-11-11T15:21:56.209656"
+                },
+                "data_slices": {
+                  "0": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ],
+                  "1": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ],
+                  "2": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ],
+                  "3": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ],
+                  "4": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ],
+                  "5": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "version": 2
+  },
+  "pub_result_metadata": {
+    "prod-bridge.prod_k1.26_s0.75_ns50:j0_t4.0_XYA#0": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "prod-bridge.prod_k1.26_s0.75_ns50:j0d_t4.0_XYA#0": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "prod-bridge.prod_k1.26_s0.75_ns50:j0_m4.0_XYA#0": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "prod-bridge.prod_k1.26_s0.75_ns50:j0_t4.0_XYB#0": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "prod-bridge.prod_k1.26_s0.75_ns50:j0d_t4.0_XYB#0": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "prod-bridge.prod_k1.26_s0.75_ns50:j0_m4.0_XYB#0": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    }
+  },
+  "execution_spans": [
+    {
+      "start": "2026-11-11T15:21:52.348507+00:00",
+      "stop": "2026-11-11T15:21:56.209656+00:00",
+      "type": "TwirledSliceSpanV2",
+      "size": 90048,
+      "pub_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "pub_sizes": {
+        "prod-bridge.prod_k1.26_s0.75_ns50:j0_t4.0_XYA#0": 15000,
+        "prod-bridge.prod_k1.26_s0.75_ns50:j0d_t4.0_XYA#0": 15000,
+        "prod-bridge.prod_k1.26_s0.75_ns50:j0_m4.0_XYA#0": 15000,
+        "prod-bridge.prod_k1.26_s0.75_ns50:j0_t4.0_XYB#0": 15000,
+        "prod-bridge.prod_k1.26_s0.75_ns50:j0d_t4.0_XYB#0": 15000,
+        "prod-bridge.prod_k1.26_s0.75_ns50:j0_m4.0_XYB#0": 15000
+      }
+    }
+  ]
+}

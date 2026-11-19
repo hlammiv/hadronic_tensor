@@ -1,0 +1,312 @@
+{
+  "backend": "ibm_chicago",
+  "calibration": "2026-11-10 09:49:05+00:00",
+  "status": {
+    "backend_name": "ibm_chicago",
+    "backend_version": "",
+    "operational": true,
+    "pending_jobs": 990,
+    "status_msg": "active"
+  },
+  "embedding": "ladder",
+  "core": {
+    "centre": [
+      53,
+      164.01002766153817
+    ],
+    "ancilla": [
+      63,
+      315.2605247908788
+    ],
+    "qubits": {
+      "53": 164.01002766153817,
+      "63": 315.2605247908788,
+      "52": 185.64276307376943,
+      "43": 253.58064572074872,
+      "54": 134.71955720716426,
+      "44": 173.05116514413032
+    },
+    "min": 134.71955720716426
+  },
+  "layout": [
+    88,
+    99,
+    98,
+    109,
+    108,
+    119,
+    118,
+    116,
+    117,
+    97,
+    107,
+    96,
+    106,
+    115,
+    105,
+    94,
+    95,
+    86,
+    85,
+    65,
+    75,
+    84,
+    74,
+    72,
+    73,
+    82,
+    83,
+    92,
+    93,
+    113,
+    103,
+    112,
+    102,
+    100,
+    101,
+    90,
+    91,
+    80,
+    81,
+    70,
+    71,
+    60,
+    61,
+    41,
+    51,
+    62,
+    52,
+    54,
+    53,
+    44,
+    43,
+    23,
+    33,
+    42,
+    32,
+    30,
+    31,
+    20,
+    21,
+    1,
+    11,
+    22,
+    12,
+    3,
+    13,
+    4,
+    14,
+    5,
+    15,
+    6,
+    16,
+    7,
+    17,
+    8,
+    18,
+    9,
+    19,
+    28,
+    29,
+    49,
+    39,
+    48,
+    38,
+    27,
+    37,
+    26,
+    36,
+    45,
+    46,
+    55,
+    56,
+    47,
+    57,
+    59,
+    58,
+    69,
+    68,
+    77,
+    78,
+    87,
+    63
+  ],
+  "operational": {
+    "n_qubits": 120,
+    "dropped_qubits": [
+      67
+    ],
+    "dropped_edges": [
+      [
+        2,
+        12
+      ],
+      [
+        3,
+        4
+      ],
+      [
+        10,
+        11
+      ],
+      [
+        14,
+        24
+      ],
+      [
+        23,
+        24
+      ],
+      [
+        24,
+        25
+      ],
+      [
+        24,
+        34
+      ],
+      [
+        26,
+        27
+      ],
+      [
+        45,
+        55
+      ],
+      [
+        54,
+        55
+      ],
+      [
+        54,
+        64
+      ],
+      [
+        57,
+        67
+      ],
+      [
+        63,
+        64
+      ],
+      [
+        64,
+        65
+      ],
+      [
+        64,
+        74
+      ],
+      [
+        66,
+        67
+      ],
+      [
+        66,
+        76
+      ],
+      [
+        67,
+        68
+      ],
+      [
+        67,
+        77
+      ],
+      [
+        75,
+        76
+      ],
+      [
+        76,
+        77
+      ],
+      [
+        76,
+        86
+      ],
+      [
+        94,
+        104
+      ],
+      [
+        103,
+        104
+      ],
+      [
+        104,
+        105
+      ],
+      [
+        104,
+        114
+      ],
+      [
+        115,
+        116
+      ]
+    ],
+    "reasons": {
+      "q67": "readout 0.0662",
+      "e(2, 12)": "rzz error 1 (uncalibrated)",
+      "e(3, 4)": "rzz error 0.0387",
+      "e(10, 11)": "rzz error 1 (uncalibrated)",
+      "e(14, 24)": "rzz error 0.0217",
+      "e(23, 24)": "rzz error 1 (uncalibrated)",
+      "e(24, 25)": "rzz error 0.0306",
+      "e(24, 34)": "rzz error 1 (uncalibrated)",
+      "e(26, 27)": "rzz error 1 (uncalibrated)",
+      "e(45, 55)": "rzz error 0.0211",
+      "e(54, 64)": "rzz error 0.0205",
+      "e(54, 55)": "rzz error 1 (uncalibrated)",
+      "e(57, 67)": "rzz error 1 (uncalibrated)",
+      "e(63, 64)": "rzz error 1 (uncalibrated)",
+      "e(64, 65)": "rzz error 1 (uncalibrated)",
+      "e(64, 74)": "cz error 0.021",
+      "e(66, 67)": "rzz error 0.193",
+      "e(66, 76)": "rzz error 1 (uncalibrated)",
+      "e(67, 68)": "rzz error 1 (uncalibrated)",
+      "e(67, 77)": "rzz error 1 (uncalibrated)",
+      "e(75, 76)": "rzz error 1 (uncalibrated)",
+      "e(76, 77)": "rzz error 1 (uncalibrated)",
+      "e(76, 86)": "rzz error 0.0349",
+      "e(94, 104)": "rzz error 0.0378",
+      "e(103, 104)": "rzz error 0.0376",
+      "e(104, 105)": "rzz error 0.0515",
+      "e(104, 114)": "rzz error 0.0732",
+      "e(115, 116)": "cz error 0.0261"
+    },
+    "edges_before": 218,
+    "edges_after": 191,
+    "live_qubits": 119,
+    "properties": true
+  },
+  "hardware_submitted": false,
+  "acceptance_records": [
+    "acceptance_mirror_diag_control2.json",
+    "acceptance_mirror_diag_twirl.json"
+  ],
+  "acceptance_failures": [
+    [],
+    []
+  ],
+  "planned_shots_per_variant": 420000,
+  "planned_jobs": {
+    "control": 2,
+    "twirled": 8
+  },
+  "estimated_qpu_seconds_total": 52.08,
+  "local_changes": [
+    "Preserve twirl flag in preset numerical checks",
+    "Add submit --require-layout RECORD guard",
+    "Incomplete submit CLI now exits nonzero, preserving CP.submit and budget behavior"
+  ],
+  "post_acceptance_changes": "The submit-only layout guard and its tests were finalized after acceptance; circuit and simulation code are unchanged.",
+  "accepted_physics_source_hashes_match": true,
+  "user_submission_attempts": {
+    "cancelled_jobs": 2,
+    "qpu_seconds": 0,
+    "report": "budget_guard_cancellation.json"
+  },
+  "retry_flag": "--no-strict-guard"
+}

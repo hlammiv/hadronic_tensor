@@ -1,0 +1,30 @@
+{
+  "checked_utc": "2026-11-08T21:38:27.774721+00:00",
+  "jobs": [
+    {
+      "variant": "mirror_diag_control",
+      "job_index": 0,
+      "job_id": "dbodrdc4148s739sssg0",
+      "status": "DONE"
+    },
+    {
+      "variant": "mirror_diag_control",
+      "job_index": 1,
+      "job_id": "dbodrdoou4as73crvpb0",
+      "status": "DONE"
+    },
+    {
+      "variant": "mirror_diag_eps05",
+      "job_index": 0,
+      "job_id": "dbodrus4148s739sst9g",
+      "status": "DONE"
+    },
+    {
+      "variant": "mirror_diag_eps05",
+      "job_index": 1,
+      "job_id": "dbodrv8ou4as73crvpvg",
+      "status": "DONE"
+    }
+  ],
+  "excluded_failure_record": "twirling_rejection.json"
+}

@@ -1,0 +1,129 @@
+{
+  "job_id": "dbq72roqtr0c738fellg",
+  "backend": "ibm_chicago",
+  "status": "DONE",
+  "metrics": {
+    "caller": "qiskit_ibm_runtime~sampler.py",
+    "qiskit_version": "qiskit_ibm_runtime-0.47.0,qiskit-2.5.0*,qiskit_aer-0.17.2*",
+    "timestamps": {
+      "created": "2026-11-11T13:45:19.854179Z",
+      "finished": "2026-11-11T15:16:45.924238Z",
+      "running": "2026-11-11T14:39:32.316998Z"
+    },
+    "bss": {
+      "seconds": 4
+    },
+    "usage": {
+      "quantum_seconds": 4,
+      "seconds": 4,
+      "status": "complete"
+    }
+  },
+  "result_metadata": {
+    "execution": {
+      "execution_spans": {
+        "__type__": "ExecutionSpans",
+        "__value__": {
+          "spans": [
+            {
+              "__type__": "TwirledSliceSpanV2",
+              "__value__": {
+                "start": {
+                  "__type__": "datetime",
+                  "__value__": "2026-11-11T15:16:41.494708"
+                },
+                "stop": {
+                  "__type__": "datetime",
+                  "__value__": "2026-11-11T15:16:43.394532"
+                },
+                "data_slices": {
+                  "0": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ],
+                  "1": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ],
+                  "2": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "version": 2
+  },
+  "pub_result_metadata": {
+    "prod-quarter.prod_k1.26_s0.75_ns50:j0_t0.0_Z#1": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "prod-quarter.prod_k1.26_s0.75_ns50:j0_t0.0_XYA#1": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "prod-quarter.prod_k1.26_s0.75_ns50:j0_t0.0_XYB#1": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    }
+  },
+  "execution_spans": [
+    {
+      "start": "2026-11-11T15:16:41.494708+00:00",
+      "stop": "2026-11-11T15:16:43.394532+00:00",
+      "type": "TwirledSliceSpanV2",
+      "size": 45024,
+      "pub_indices": [
+        0,
+        1,
+        2
+      ],
+      "pub_sizes": {
+        "prod-quarter.prod_k1.26_s0.75_ns50:j0_t0.0_Z#1": 15000,
+        "prod-quarter.prod_k1.26_s0.75_ns50:j0_t0.0_XYA#1": 15000,
+        "prod-quarter.prod_k1.26_s0.75_ns50:j0_t0.0_XYB#1": 15000
+      }
+    }
+  ]
+}

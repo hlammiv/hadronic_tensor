@@ -1,0 +1,308 @@
+{
+  "job_id": "dbq72qgqtr0c738felhg",
+  "backend": "ibm_chicago",
+  "status": "DONE",
+  "metrics": {
+    "caller": "qiskit_ibm_runtime~sampler.py",
+    "qiskit_version": "qiskit_ibm_runtime-0.47.0,qiskit-2.5.0*,qiskit_aer-0.17.2*",
+    "timestamps": {
+      "created": "2026-11-11T13:45:14.165152Z",
+      "finished": "2026-11-11T15:16:24.699174Z",
+      "running": "2026-11-11T14:12:03.327953Z"
+    },
+    "bss": {
+      "seconds": 6
+    },
+    "usage": {
+      "quantum_seconds": 6,
+      "seconds": 6,
+      "status": "complete"
+    }
+  },
+  "result_metadata": {
+    "execution": {
+      "execution_spans": {
+        "__type__": "ExecutionSpans",
+        "__value__": {
+          "spans": [
+            {
+              "__type__": "TwirledSliceSpanV2",
+              "__value__": {
+                "start": {
+                  "__type__": "datetime",
+                  "__value__": "2026-11-11T15:16:13.895179"
+                },
+                "stop": {
+                  "__type__": "datetime",
+                  "__value__": "2026-11-11T15:16:15.095710"
+                },
+                "data_slices": {
+                  "9": [
+                    [
+                      32,
+                      118
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    118,
+                    3750
+                  ]
+                }
+              }
+            },
+            {
+              "__type__": "TwirledSliceSpanV2",
+              "__value__": {
+                "start": {
+                  "__type__": "datetime",
+                  "__value__": "2026-11-11T15:16:15.099994"
+                },
+                "stop": {
+                  "__type__": "datetime",
+                  "__value__": "2026-11-11T15:16:18.861834"
+                },
+                "data_slices": {
+                  "0": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ],
+                  "1": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ],
+                  "2": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ],
+                  "3": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ],
+                  "4": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ],
+                  "5": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ],
+                  "6": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ],
+                  "7": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ],
+                  "8": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "version": 2
+  },
+  "pub_result_metadata": {
+    "relA-core.relA_k1.26_s0.75_ns50:j0_t0.0_Z#0": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "relA-core.relA_k1.26_s0.75_ns50:j0_t0.0_XYA#0": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "relA-core.relA_k1.26_s0.75_ns50:j0_t0.0_XYB#0": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "relA-core.relA_k1.26_s0.75_ns50:j1p1_t0.0_Z#0": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "relA-core.relA_k1.26_s0.75_ns50:j1p1_t0.0_XYA#0": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "relA-core.relA_k1.26_s0.75_ns50:j1p1_t0.0_XYB#0": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "relA-core.relA_k1.26_s0.75_ns50:j1p2_t0.0_Z#0": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "relA-core.relA_k1.26_s0.75_ns50:j1p2_t0.0_XYA#0": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "relA-core.relA_k1.26_s0.75_ns50:j1p2_t0.0_XYB#0": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "relA-core.relA_k1.26_s0.75_ns50:plain_t0.0_Z#0": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    }
+  },
+  "execution_spans": [
+    {
+      "start": "2026-11-11T15:16:13.895179+00:00",
+      "stop": "2026-11-11T15:16:15.095710+00:00",
+      "type": "TwirledSliceSpanV2",
+      "size": 3776,
+      "pub_indices": [
+        9
+      ],
+      "pub_sizes": {
+        "relA-core.relA_k1.26_s0.75_ns50:plain_t0.0_Z#0": 3750
+      }
+    },
+    {
+      "start": "2026-11-11T15:16:15.099994+00:00",
+      "stop": "2026-11-11T15:16:18.861834+00:00",
+      "type": "TwirledSliceSpanV2",
+      "size": 135072,
+      "pub_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "pub_sizes": {
+        "relA-core.relA_k1.26_s0.75_ns50:j0_t0.0_Z#0": 15000,
+        "relA-core.relA_k1.26_s0.75_ns50:j0_t0.0_XYA#0": 15000,
+        "relA-core.relA_k1.26_s0.75_ns50:j0_t0.0_XYB#0": 15000,
+        "relA-core.relA_k1.26_s0.75_ns50:j1p1_t0.0_Z#0": 15000,
+        "relA-core.relA_k1.26_s0.75_ns50:j1p1_t0.0_XYA#0": 15000,
+        "relA-core.relA_k1.26_s0.75_ns50:j1p1_t0.0_XYB#0": 15000,
+        "relA-core.relA_k1.26_s0.75_ns50:j1p2_t0.0_Z#0": 15000,
+        "relA-core.relA_k1.26_s0.75_ns50:j1p2_t0.0_XYA#0": 15000,
+        "relA-core.relA_k1.26_s0.75_ns50:j1p2_t0.0_XYB#0": 15000
+      }
+    }
+  ]
+}

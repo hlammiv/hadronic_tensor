@@ -1,0 +1,56 @@
+{
+  "acceptance_record": "acceptance_main_rzz_twirl.json",
+  "acceptance_sha256": "b7d5312d089024a0243c157e457c39485d6861bddc96ed48c6889d24a071ff16",
+  "api": "QiskitRuntimeService.backend('ibm_chicago', use_fractional_gates=True).properties(refresh=True, datetime=aware_UTC_datetime)",
+  "backend": "ibm_chicago",
+  "comparison": {
+    "acceptance_last_update_utc": "2026-11-11T10:05:23Z",
+    "all_core_t2_values_match": true,
+    "backend_matches": true,
+    "core_t2_us": {
+      "43": {
+        "acceptance_t2_us": 253.58064572074872,
+        "matches": true,
+        "returned_t2_us": 253.58064572074872
+      },
+      "44": {
+        "acceptance_t2_us": 173.05116514413032,
+        "matches": true,
+        "returned_t2_us": 173.05116514413032
+      },
+      "52": {
+        "acceptance_t2_us": 185.64276307376943,
+        "matches": true,
+        "returned_t2_us": 185.64276307376943
+      },
+      "53": {
+        "acceptance_t2_us": 164.01002766153817,
+        "matches": true,
+        "returned_t2_us": 164.01002766153817
+      },
+      "54": {
+        "acceptance_t2_us": 134.71955720716426,
+        "matches": true,
+        "returned_t2_us": 134.71955720716426
+      },
+      "63": {
+        "acceptance_t2_us": 315.2605247908788,
+        "matches": true,
+        "returned_t2_us": 315.2605247908788
+      }
+    },
+    "last_update_matches_acceptance": true,
+    "returned_last_update_utc": "2026-11-11T10:05:23Z",
+    "returned_min_core_t2_us": 134.71955720716426,
+    "snapshot_not_after_requested_time": true
+  },
+  "current_properties_fallback_requested": false,
+  "outcome": "matches_acceptance",
+  "request_time_basis": "Acceptance written timestamp interpreted as UTC, as requested for this retrieval.",
+  "requested_as_of_utc": "2026-11-11T12:17:33Z",
+  "retrieved_at_utc": "2026-11-11T16:19:31.277312Z",
+  "snapshot": "calibration/backend_properties_2026-11-11T10-05-23Z.json",
+  "snapshot_scope": "Historical properties requested as of acceptance, not a claim about calibration throughout hardware execution.",
+  "snapshot_sha256": "4f724efce4756cffe79fe29a37b0ca6a6528dd61138180285eedb7c29be4634f",
+  "use_fractional_gates": true
+}

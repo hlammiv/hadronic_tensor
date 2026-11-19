@@ -1,0 +1,5 @@
+campaign,job_index,job_id,backend,status,pubs,shots,qpu_seconds
+mirror_diag_control,0,dbodrdc4148s739sssg0,ibm_chicago,DONE,1,60000,4.0
+mirror_diag_control,1,dbodrdoou4as73crvpb0,ibm_chicago,DONE,6,360000,14.0
+mirror_diag_eps05,0,dbodrus4148s739sst9g,ibm_chicago,DONE,1,60000,4.0
+mirror_diag_eps05,1,dbodrv8ou4as73crvpvg,ibm_chicago,DONE,6,360000,14.0

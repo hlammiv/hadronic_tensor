@@ -1,0 +1,20 @@
+{
+  "checked_utc": "2026-11-08T20:41:41.020595+00:00",
+  "job_id": "dbodrdc4148s739sssg0",
+  "metrics": {
+    "caller": "qiskit_ibm_runtime~sampler.py",
+    "qiskit_version": "qiskit_ibm_runtime-0.47.0,qiskit-2.5.0*,qiskit_aer-0.17.2*",
+    "timestamps": {
+      "created": "2026-11-08T20:38:13.409633Z",
+      "finished": null,
+      "running": null
+    },
+    "bss": {
+      "seconds": 0
+    },
+    "usage": {
+      "quantum_seconds": 0,
+      "seconds": 0
+    }
+  }
+}

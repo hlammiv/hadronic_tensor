@@ -1,0 +1,239 @@
+{
+  "job_id": "dbq75t44148s739vl4kg",
+  "backend": "ibm_chicago",
+  "status": "DONE",
+  "metrics": {
+    "caller": "qiskit_ibm_runtime~sampler.py",
+    "qiskit_version": "qiskit_ibm_runtime-0.47.0,qiskit-2.5.0*,qiskit_aer-0.17.2*",
+    "timestamps": {
+      "created": "2026-11-11T13:51:48.665881Z",
+      "finished": "2026-11-11T15:47:17.836961Z",
+      "running": "2026-11-11T15:46:03.61454Z"
+    },
+    "bss": {
+      "seconds": 6
+    },
+    "usage": {
+      "quantum_seconds": 6,
+      "seconds": 6,
+      "status": "complete"
+    }
+  },
+  "result_metadata": {
+    "execution": {
+      "execution_spans": {
+        "__type__": "ExecutionSpans",
+        "__value__": {
+          "spans": [
+            {
+              "__type__": "TwirledSliceSpanV2",
+              "__value__": {
+                "start": {
+                  "__type__": "datetime",
+                  "__value__": "2026-11-11T15:47:08.794085"
+                },
+                "stop": {
+                  "__type__": "datetime",
+                  "__value__": "2026-11-11T15:47:13.124890"
+                },
+                "data_slices": {
+                  "0": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ],
+                  "1": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ],
+                  "2": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ],
+                  "3": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ],
+                  "4": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ],
+                  "5": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ],
+                  "6": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ],
+                  "7": [
+                    [
+                      32,
+                      469
+                    ],
+                    true,
+                    0,
+                    32,
+                    0,
+                    469,
+                    15000
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "version": 2
+  },
+  "pub_result_metadata": {
+    "prod-quarter.prod_k1.26_s0.75_ns50:j0_t2.25_Z#1": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "prod-quarter.prod_k1.26_s0.75_ns50:j0_m2.25_Z#1": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "prod-quarter.prod_k1.26_s0.75_ns50:j0_t2.25_XYA#1": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "prod-quarter.prod_k1.26_s0.75_ns50:j0_m2.25_XYA#1": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "prod-quarter.prod_k1.26_s0.75_ns50:j0_t2.25_XYB#1": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "prod-quarter.prod_k1.26_s0.75_ns50:j0_m2.25_XYB#1": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "prod-quarter.prod_k1.26_s0.75_ns50:j0_t2.75_Z#1": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    },
+    "prod-quarter.prod_k1.26_s0.75_ns50:j0_m2.75_Z#1": {
+      "circuit_metadata": {},
+      "num_randomizations": 32,
+      "compilation": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    }
+  },
+  "execution_spans": [
+    {
+      "start": "2026-11-11T15:47:08.794085+00:00",
+      "stop": "2026-11-11T15:47:13.124890+00:00",
+      "type": "TwirledSliceSpanV2",
+      "size": 120064,
+      "pub_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "pub_sizes": {
+        "prod-quarter.prod_k1.26_s0.75_ns50:j0_t2.25_Z#1": 15000,
+        "prod-quarter.prod_k1.26_s0.75_ns50:j0_m2.25_Z#1": 15000,
+        "prod-quarter.prod_k1.26_s0.75_ns50:j0_t2.25_XYA#1": 15000,
+        "prod-quarter.prod_k1.26_s0.75_ns50:j0_m2.25_XYA#1": 15000,
+        "prod-quarter.prod_k1.26_s0.75_ns50:j0_t2.25_XYB#1": 15000,
+        "prod-quarter.prod_k1.26_s0.75_ns50:j0_m2.25_XYB#1": 15000,
+        "prod-quarter.prod_k1.26_s0.75_ns50:j0_t2.75_Z#1": 15000,
+        "prod-quarter.prod_k1.26_s0.75_ns50:j0_m2.75_Z#1": 15000
+      }
+    }
+  ]
+}

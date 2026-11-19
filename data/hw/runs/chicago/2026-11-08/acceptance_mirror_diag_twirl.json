@@ -1,0 +1,630 @@
+{
+ "kind": "acceptance",
+ "status": "PASS",
+ "written": "2026-11-08T20:36:57",
+ "env": {
+  "htq_hw": "0.1.0",
+  "python": "3.12.13",
+  "platform": "macOS-27.2-arm64-arm-64bit",
+  "modules": {
+   "qiskit": "2.5.0",
+   "qiskit_aer": "0.17.2",
+   "qiskit_ibm_runtime": "0.47.0",
+   "numpy": "2.4.6",
+   "scipy": "1.18.0"
+  },
+  "pinned": {
+   "qiskit": "2.5.0",
+   "qiskit_aer": "0.17.2",
+   "qiskit_ibm_runtime": "0.47.0",
+   "numpy": "2.4.6",
+   "scipy": "1.18.0"
+  },
+  "pinned_ok": true,
+  "pin_mismatches": []
+ },
+ "git": {
+  "commit": "03d820b26d4ca50c7199a10e298fca6fe9304807",
+  "tag": "03d820b",
+  "branch": "tier3-calibration-checks",
+  "dirty": false,
+  "dirty_files": []
+ },
+ "level": "full",
+ "target": {
+  "name": "ibm_chicago",
+  "label": "ibm_chicago",
+  "is_real": true,
+  "standin_for": null,
+  "twin_of": null,
+  "num_qubits": 120,
+  "n_edges": 218,
+  "basis_gates": [
+   "cz",
+   "delay",
+   "id",
+   "if_else",
+   "measure",
+   "measure_2",
+   "measure_reset",
+   "measure_reset_2",
+   "reset",
+   "rx",
+   "rz",
+   "rzz",
+   "sx",
+   "x",
+   "xslow"
+  ],
+  "last_update_date": "2026-11-08 19:50:22+00:00"
+ },
+ "presets": [
+  "mirror-diag"
+ ],
+ "ns": 50,
+ "basis": "rzz",
+ "seconds": 106.3,
+ "steps": [
+  {
+   "name": "env",
+   "status": "PASS",
+   "detail": "pinned"
+  },
+  {
+   "name": "git",
+   "status": "PASS",
+   "detail": "03d820b 03d820b2"
+  },
+  {
+   "name": "target",
+   "status": "PASS",
+   "detail": "ibm_chicago (live)"
+  },
+  {
+   "name": "embedding",
+   "status": "PASS",
+   "detail": "ladder, redundancy 8, spare 19, 3 dead qubit(s) and 24 coupler(s) excluded",
+   "embedding": {
+    "kind": "ladder",
+    "redundancy": 8,
+    "spare_qubits": 19,
+    "layout": [
+     22,
+     33,
+     23,
+     12,
+     13,
+     2,
+     3,
+     14,
+     4,
+     6,
+     5,
+     25,
+     15,
+     26,
+     16,
+     7,
+     17,
+     8,
+     18,
+     9,
+     19,
+     28,
+     29,
+     49,
+     39,
+     48,
+     38,
+     27,
+     37,
+     35,
+     36,
+     45,
+     46,
+     55,
+     56,
+     47,
+     57,
+     59,
+     58,
+     69,
+     68,
+     77,
+     78,
+     87,
+     88,
+     97,
+     98,
+     109,
+     108,
+     117,
+     107,
+     105,
+     106,
+     86,
+     96,
+     85,
+     95,
+     84,
+     94,
+     92,
+     93,
+     113,
+     103,
+     112,
+     102,
+     111,
+     101,
+     110,
+     100,
+     91,
+     90,
+     81,
+     80,
+     60,
+     70,
+     61,
+     71,
+     82,
+     72,
+     74,
+     73,
+     62,
+     63,
+     54,
+     53,
+     44,
+     43,
+     52,
+     42,
+     51,
+     41,
+     50,
+     40,
+     31,
+     30,
+     10,
+     20,
+     11,
+     21,
+     32,
+     118
+    ]
+   },
+   "operational": {
+    "n_qubits": 120,
+    "dropped_qubits": [
+     24,
+     67,
+     83
+    ],
+    "dropped_edges": [
+     [
+      2,
+      12
+     ],
+     [
+      10,
+      11
+     ],
+     [
+      14,
+      24
+     ],
+     [
+      23,
+      24
+     ],
+     [
+      24,
+      25
+     ],
+     [
+      24,
+      34
+     ],
+     [
+      26,
+      27
+     ],
+     [
+      45,
+      55
+     ],
+     [
+      54,
+      55
+     ],
+     [
+      57,
+      67
+     ],
+     [
+      63,
+      64
+     ],
+     [
+      64,
+      65
+     ],
+     [
+      66,
+      67
+     ],
+     [
+      66,
+      76
+     ],
+     [
+      67,
+      68
+     ],
+     [
+      67,
+      77
+     ],
+     [
+      75,
+      76
+     ],
+     [
+      76,
+      77
+     ],
+     [
+      76,
+      86
+     ],
+     [
+      94,
+      104
+     ],
+     [
+      103,
+      104
+     ],
+     [
+      104,
+      105
+     ],
+     [
+      104,
+      114
+     ],
+     [
+      115,
+      116
+     ]
+    ],
+    "reasons": {
+     "q24": "readout 0.0553",
+     "q67": "readout 0.0653",
+     "q83": "readout 0.0663",
+     "e(2, 12)": "rzz error 1 (uncalibrated)",
+     "e(10, 11)": "rzz error 1 (uncalibrated)",
+     "e(14, 24)": "rzz error 0.0276",
+     "e(23, 24)": "rzz error 1 (uncalibrated)",
+     "e(24, 25)": "rzz error 0.0259",
+     "e(24, 34)": "rzz error 1 (uncalibrated)",
+     "e(26, 27)": "rzz error 1 (uncalibrated)",
+     "e(45, 55)": "rzz error 0.0233",
+     "e(54, 55)": "rzz error 1 (uncalibrated)",
+     "e(57, 67)": "rzz error 1 (uncalibrated)",
+     "e(63, 64)": "rzz error 1 (uncalibrated)",
+     "e(64, 65)": "rzz error 1 (uncalibrated)",
+     "e(66, 67)": "rzz error 0.193",
+     "e(66, 76)": "rzz error 1 (uncalibrated)",
+     "e(67, 68)": "rzz error 1 (uncalibrated)",
+     "e(67, 77)": "rzz error 1 (uncalibrated)",
+     "e(75, 76)": "rzz error 1 (uncalibrated)",
+     "e(76, 77)": "rzz error 1 (uncalibrated)",
+     "e(76, 86)": "rzz error 0.0516",
+     "e(94, 104)": "rzz error 0.0392",
+     "e(103, 104)": "rzz error 0.0342",
+     "e(104, 105)": "rzz error 0.0472",
+     "e(104, 114)": "rzz error 0.0752",
+     "e(115, 116)": "cz error 0.0228"
+    },
+    "edges_before": 218,
+    "edges_after": 190,
+    "live_qubits": 117,
+    "properties": true
+   }
+  },
+  {
+   "name": "cards:prod_k1.26_s0.75_ns50",
+   "status": "PASS",
+   "detail": "1 family grid(s) cover every slice"
+  },
+  {
+   "name": "circuits",
+   "status": "PASS",
+   "detail": "7 pubs built, 2q 601-4201, skeletons asserted"
+  },
+  {
+   "name": "plan",
+   "status": "PASS",
+   "detail": "2 jobs, 4.2e+05 shots, 0.4 min at 62 us (budget 180)",
+   "jobs": 2,
+   "minutes": 0.43400000000000005
+  },
+  {
+   "name": "runtime",
+   "status": "PASS",
+   "detail": "7 pubs in 2 jobs pass Runtime input checks",
+   "jobs": 2,
+   "pubs": 7
+  },
+  {
+   "name": "check",
+   "status": "PASS",
+   "detail": "5 circuits, worst 8.08e-05 (tol 0.005)",
+   "worst": 8.08161283884206e-05
+  },
+  {
+   "name": "rehearse",
+   "status": "PASS",
+   "detail": "2 slices from 3 pubs at t=[0.0, 2.0] (8000 slice / 4000 qpdf / 8000 qpdf-vac shots), worst |kappa-1| 0.000",
+   "slices": 2,
+   "worst_kappa_dev": 4.232773687107283e-09,
+   "rehearsal": {
+    "prod_k1.26_s0.75_ns50": [
+     {
+      "slice": [
+       "00",
+       "0.0"
+      ],
+      "kappa_center": 1.0,
+      "masked": 0
+     },
+     {
+      "slice": [
+       "00",
+       "2.0"
+      ],
+      "kappa_center": 1.0000000042327737,
+      "masked": 0
+     }
+    ]
+   },
+   "real_companion_pubs": 0
+  }
+ ],
+ "failures": [],
+ "warnings": [],
+ "cards": {
+  "prod_k1.26_s0.75_ns50": {
+   "families_needed": [
+    "j0"
+   ],
+   "times_needed": [
+    0.0,
+    2.0,
+    4.0,
+    6.0
+   ],
+   "plain_reference_needed": false,
+   "grids": {
+    "j0": {
+     "times": [
+      0.0,
+      0.25,
+      0.5,
+      0.75,
+      1.0,
+      1.25,
+      1.5,
+      1.75,
+      2.0,
+      2.25,
+      2.5,
+      2.75,
+      3.0,
+      3.25,
+      3.5,
+      3.75,
+      4.0,
+      4.25,
+      4.5,
+      4.75,
+      5.0,
+      5.25,
+      5.5,
+      5.75,
+      6.0,
+      6.5,
+      7.0,
+      7.5,
+      8.0
+     ],
+     "missing_rows": [],
+     "id_a": 0.5,
+     "c_a": -0.5
+    }
+   }
+  }
+ },
+ "files": {
+  "README.md": "2358319ed10f02b2488f711f0d07211096a0a0eadfe8618483d3bcc45d77e98e",
+  "__init__.py": "75c3026120b4f9d575a164a6fbf7335508cb6fc11e073de8ccbff75dd8d0f5ee",
+  "__main__.py": "ae0e05b340efc6447e091ce60c0d25881233fe3490fd00cc573f0308c38fcc4b",
+  "acceptance.py": "efc03dbc9c503cd027715e52f6880a254c193be1a43b81967d75e42b95379c16",
+  "analyze.py": "5675faa42e055065417d0e96ca65656cc9ec68e1a98f489236c55fc8f03c140c",
+  "campaign.py": "6336910c50c41345cf4119ce3da24ea8adf560352564e6586b5af98f3c1e82ad",
+  "cards/prod_k1.26_s0.75_ns50/card.json": "b98d612ba9232ac53cdd6285676dcf3b6ed2b9f978e5c4d4a77452979904732a",
+  "cards/prod_k1.26_s0.75_ns50/grids_provenance.json": "2778eea076341a08e0e64e6cfabd98a2932d013da360a9de372ce48cb14812ba",
+  "cards/prod_k1.26_s0.75_ns50/ideal_j0.npz": "475179935223d25bb1cf1c56202d2d15deb609cf8fb62049a37dcb2a94aae94e",
+  "cards/prod_k1.26_s0.75_ns50/ideal_j0d.npz": "6e81b6cf9fea27d78e57e67e1a7958bc832a6b7525d26fd2cd638ec8f0887431",
+  "cards/prod_k1.26_s0.75_ns50/ideal_j1p1.npz": "449d922edf1bceeea2e8862444fafbc5b26c8dc4ca624a9525feb9b8e4346a72",
+  "cards/prod_k1.26_s0.75_ns50/ideal_j1p2.npz": "f2b5a6aaf2ab1a63ecd54326bda7ef39e804394416eb383d03f6269fc0a48673",
+  "cards/prod_k1.26_s0.75_ns58/card.json": "fdddcb8d4ff631d2c0f88074209f579e0ebf6fd3e7121f983230a99a31c977e4",
+  "cards/prod_k1.26_s1.00_ns50/card.json": "4023273b4369eb81049a19b5cbbc1b4f5fdfefc58101632c588f2e86bd33a9d9",
+  "cards/prod_k1.26_s1.50_ns50/card.json": "3e1d8975484b1644eb2ae97b7b53c211c55b8284631159474b7083f3bf7c6605",
+  "cards/prod_vac_ns50/card.json": "c46957fc573e087d9dadf1bdeb59d44a89223991519b7a4b504564938f39fd3d",
+  "cards/prod_vac_ns50/grids_provenance.json": "b6386d3af134a1ff82992272fe910e03dfc4863cbd0f7766087f6fb826cd2b36",
+  "cards/prod_vac_ns50/ideal_j0.npz": "2bbe14291120ddf64f4dff11dffc46136e94aebc38d6f82049e98fcb504ae8af",
+  "cards/relA_k0.00_s0.75_ns50/card.json": "f449daeab2ceabf816513246f45a4a85b5d23e21440b50b3f7492a372e4786f0",
+  "cards/relA_k1.26_s0.75_ns50/card.json": "0e878b3292f0cf347190f77b51f80811c1d2b7253ae3368e2ed5d6f9dae62b52",
+  "cards/relA_k1.26_s0.75_ns50/grids_provenance.json": "ad9273253a180a38616f0391fb45b88799eb427130e40b071d809bc5766b4e53",
+  "cards/relA_k1.26_s0.75_ns50/ideal_j0.npz": "84ad90ae3ae5c6224ecd1f86195f0434efae771a115c1f9e2f1e02be38546fec",
+  "cards/relA_k1.26_s0.75_ns50/ideal_j0d.npz": "2a37cc075583fc035ba49ed2fdd39a9baeb848c1ea58b363dcaaf0bc68ed3fe2",
+  "cards/relA_k1.26_s0.75_ns50/ideal_j1p1.npz": "8bfb41da2ecc3ff44d217c64687c5fcc5239d25ab6a8577845131941d4e61bc1",
+  "cards/relA_k1.26_s0.75_ns50/ideal_j1p2.npz": "5bfca810a3906d181cd9ee466d54d26bd94fe9a13b14ab6fe87bbadb4f408727",
+  "cards/relA_k1.26_s0.75_ns58/card.json": "bdd55814f69f55a140e2e92c1c520c5dcce1f2c30b5848e9e0e4e5d1cd5984a8",
+  "cards/relA_k1.26_s1.00_ns50/card.json": "3c6925ddfc6b09d8a7bd20f6154e02a76db781a3540cae0716770f055f3799d8",
+  "cards/relA_k1.26_s1.50_ns50/card.json": "bc4896761c2ab889ad4c358f07af7ffa9be5d50af1bda9f8c223c2e17129566a",
+  "cards/relA_vac_ns50/card.json": "ba02750be366a508a53da7edc314267d29fe7b9214ed08327669c4e70764f98d",
+  "cards/relA_vac_ns50/grids_provenance.json": "9c2c5c8e32741489dd7b2c06199bda78725f36ff13d37da6f7182523a43f1c89",
+  "cards/relA_vac_ns50/ideal_j0.npz": "c941d55cb89d05d77e82020d7241a2e61756534a8805e55d6b817a318f7f1d2f",
+  "circuits.py": "14735183140f8fdab38200c532a3b5de70e2db990bee325d69491c2496132e2a",
+  "gauss.py": "7f867aa6a80b3e612becd435b3abf6fe07d7fd8d6e495d11c72c323e9b4dcf25",
+  "model.py": "c8802c025871ff603e4f71fc3b84f484a4e58360580f45b431e00bcbe967f58e",
+  "record.py": "a72c64b1437232d0cb80fe432405757931d213a396948e5023177a9a5a02f767",
+  "refs/README.md": "07d69ce00897c9c56a068c595da715bd7a9c06c80a110b51adc031971df54031",
+  "refs/qpdf_card_refs.npz": "cab315c1662e481e99b86feebbdc6a9b05d2c1e846c6be0979b46732b052dfa9",
+  "refs/wing_surrogate_prod.npz": "f31bfa0327352b70e02e5beb7cbdcf77e262ab801ef7c54dd4bea2c256d8bdf7",
+  "refs/wing_surrogate_relA.npz": "a2da3fdc921628b9a54fb2d2ae7e10eb07f33587fe67544b1935b3b28b86bfb5",
+  "requirements.txt": "20685a3e7c08fece5b36f5e9855eb5c91d0d1db26ab73895915c1f404bce6b9f",
+  "sim.py": "9317b041fda07df98bd2a125c7bf89ea3cbc5ab99ee5f6a0acc4612ebc3d0dbb",
+  "target.py": "70583c2a689226729b6b417b6f04c8a6b560c7e04cd06c3452a054f057451f12",
+  "tests/conftest.py": "113960c1012e0aa6e66932ac5b8983ad50b3299c908135d1eaed9e04fcab64c6",
+  "tests/test_acceptance.py": "9295cd89919ab630b90cb1dfc5cb6cdb2948fee761b3970fe17167ce68a8d337",
+  "tests/test_acceptance_im.py": "3a885307bd7b21b01fc94df5a291a93d8d1455a3d282bf8a9fec19bc24adf9f2",
+  "tests/test_analyze.py": "fafa854a1cb22dc632a811161d9f8b895d01223b47597376c2b4187d5f1e1a04",
+  "tests/test_calibration_policy.py": "1103b7d706014d783cc96d6591a037fe396e3bd856854f74838af4249ec8f6d0",
+  "tests/test_campaign.py": "e3353e37feec64695e18fc1bf8b0352a6b1dfd2cddf66d2883dafb4428f19d7f",
+  "tests/test_circuits.py": "c1f5579604d3aee5e53f8f7fc33d5cfa7112d94d59967648c03ca8ded736805f",
+  "tests/test_diagnostic_filters.py": "ef6593d050ee87fd9821c3c7832aca773469e5b524417c426168e05471ecd8b2",
+  "tests/test_gauss.py": "80db4c1199bd2974bd17091616118bdc85f6c1d8aa1d5cdb25941807aa738fd7",
+  "tests/test_gauss_layout_score.py": "9a31bcd1098c6052f74a1b42ff3a75d832b068e3d62f6c7ddaa9f283e9d5ed13",
+  "tests/test_gauss_search_diagnostics.py": "901405e8b369d3327a47643fad799379f3e58b82d6f7a55b54dd0717c69c045f",
+  "tests/test_mirror_diag.py": "61ee422ec775fc1e674b7fc66169550602167d9062a4c3abcad2d0d53aa4d821",
+  "tests/test_model.py": "71d65447913a687b1853704ed4dc95b4189eb3fda2876b68a8e02baa7f2fc8f0",
+  "tests/test_presets.py": "bc72ec0f6ca835806ff4c179bd00d5c6aa622c288f7f8f61a753e696c60548c1",
+  "tests/test_rep_time.py": "844bea940ea2891ddfefe61479b3bfdaccd84edc229b6bfc76e5b2deb267047b",
+  "tests/test_runtime_preflight.py": "86a17256fe300d4c4abaff95bb9143267ee28ec72c6da41a1b1966645b4e1eea",
+  "tests/test_rzz_preparation.py": "219e6595e5eaa8e1063b60fce915f3ef0d02bb3c8b3df8a4cef1b306b86c3a24",
+  "tests/test_sim.py": "7d768dd8edf5bd2dfd81421544b36a4d2ba907a4abcf97cee8b88666d9b06c47",
+  "tests/test_target.py": "b3e828b24f88b375cfb1e7ddba0962964c416bffc01cd3a1b9f051f98da677e9"
+ },
+ "options": {
+  "mirror_eps": 1e-08,
+  "twirling_gates": true,
+  "twirling_measure": true,
+  "dd": "XY4"
+ },
+ "embedding": {
+  "kind": "ladder",
+  "redundancy": 8,
+  "spare_qubits": 19,
+  "layout": [
+   22,
+   33,
+   23,
+   12,
+   13,
+   2,
+   3,
+   14,
+   4,
+   6,
+   5,
+   25,
+   15,
+   26,
+   16,
+   7,
+   17,
+   8,
+   18,
+   9,
+   19,
+   28,
+   29,
+   49,
+   39,
+   48,
+   38,
+   27,
+   37,
+   35,
+   36,
+   45,
+   46,
+   55,
+   56,
+   47,
+   57,
+   59,
+   58,
+   69,
+   68,
+   77,
+   78,
+   87,
+   88,
+   97,
+   98,
+   109,
+   108,
+   117,
+   107,
+   105,
+   106,
+   86,
+   96,
+   85,
+   95,
+   84,
+   94,
+   92,
+   93,
+   113,
+   103,
+   112,
+   102,
+   111,
+   101,
+   110,
+   100,
+   91,
+   90,
+   81,
+   80,
+   60,
+   70,
+   61,
+   71,
+   82,
+   72,
+   74,
+   73,
+   62,
+   63,
+   54,
+   53,
+   44,
+   43,
+   52,
+   42,
+   51,
+   41,
+   50,
+   40,
+   31,
+   30,
+   10,
+   20,
+   11,
+   21,
+   32,
+   118
+  ],
+  "cuts": {
+   "max_readout_error": 0.05,
+   "max_2q_error": 0.02,
+   "basis": "rzz"
+  }
+ }
+}
