@@ -21,15 +21,18 @@
 #   data/hw/runs/chicago/reduce_run.sh data/hw/runs/chicago/<date> main_rzz_twirl debias_w1_unmeas \
 #       ibm_chicago --sum-rule-min-coverage 0.9 --unmeasured-error ref
 #
+# Environment: HTQ_WRAP replaces the analyze wrapper (jackknife_run.sh passes
+# analyze_debias_jk.py), HTQ_TMAXES the map depths (default "6 8").
+#
 # Check memory first (free -g); each analyze holds one card's bits files.
 set -u
 cd "$(dirname "$0")/../../../.."
 PY=.venv/bin/python
 RUN=${1:?run folder}; SUB=${2:?jobs/raw subfolder}; OUTTAG=${3:?analysis tag}
 DEV=${4:-ibm_chicago}; shift $(( $# < 4 ? $# : 4 )); MAPFLAGS=("$@")
-WRAP=data/hw/runs/chicago/2026-11-06/analysis/2026-11-07_debias/analyze_debias.py
+WRAP=${HTQ_WRAP:-data/hw/runs/chicago/2026-11-06/analysis/2026-11-07_debias/analyze_debias.py}
 CARDS="prod_k1.26_s0.75_ns50 relA_k1.26_s0.75_ns50"
-WINDOW=1; KAP=0.10
+WINDOW=1; KAP=0.10; TMAXES=${HTQ_TMAXES:-6 8}
 OUT=$RUN/analysis/$OUTTAG; mkdir -p $OUT/logs $OUT/slices
 log() { echo "[$(date -u +%FT%TZ)] $*" | tee -a $OUT/run.log; }
 [ -f $WRAP ] || { log "missing $WRAP"; exit 1; }
@@ -80,10 +83,10 @@ map() {   # $1 tag (prod|relA)  $2 card  $3 tmax  [$4 extra]
 }
 mkdir -p $OUT/maps; MAPS=()
 if ls $OUT/slices/prod_k1.26_s0.75_ns50/slice_00_t*.npz >/dev/null 2>&1; then
-  for tmax in 6 8; do log "map prod_t$tmax"; map prod prod_k1.26_s0.75_ns50 $tmax; MAPS+=($OUT/maps/prod_t$tmax.npz); done
+  for tmax in $TMAXES; do log "map prod_t$tmax"; map prod prod_k1.26_s0.75_ns50 $tmax; MAPS+=($OUT/maps/prod_t$tmax.npz); done
 fi
 if ls $OUT/slices/relA_k1.26_s0.75_ns50/slice_00_t*.npz >/dev/null 2>&1; then
-  for tmax in 6 8; do log "map relA_t$tmax"; map relA relA_k1.26_s0.75_ns50 $tmax "--wing-surrogate htq_hw/refs/wing_surrogate_relA.npz"; MAPS+=($OUT/maps/relA_t$tmax.npz); done
+  for tmax in $TMAXES; do log "map relA_t$tmax"; map relA relA_k1.26_s0.75_ns50 $tmax "--wing-surrogate htq_hw/refs/wing_surrogate_relA.npz"; MAPS+=($OUT/maps/relA_t$tmax.npz); done
 fi
 EXIST=(); for m in "${MAPS[@]}"; do [ -f $m ] && EXIST+=($m); done
 if [ ${#EXIST[@]} -gt 0 ]; then

@@ -1,0 +1,8 @@
+jackknife over 4 groups of twirl instances; wedge [0, 2.5], t_max 6
+particle     W         A   shot  window  jk err  A/err   leave-one-out
+fast (relA)  00     0.09   0.11    0.05    0.24    0.4   0.24 0.29 -0.06 0.27
+fast (relA)  01     1.31   0.06    0.04    0.25    5.1   1.44 1.25 1.38 1.06
+fast (relA)  10     1.89   0.10    0.11    0.33    5.4   1.97 2.11 1.62 1.74
+fast (relA)  11     1.20   0.41    0.03    0.45    2.7   1.11 1.64 0.94 1.16
+slow (prod)  00     1.10   0.04    0.23    0.15    3.9   1.26 1.06 1.09 1.05
+slow (prod)  10     3.38   0.55    0.20    1.12    3.0   3.08 2.37 1.28 2.02  UNSTABLE: pooled outside the leave-one-out range

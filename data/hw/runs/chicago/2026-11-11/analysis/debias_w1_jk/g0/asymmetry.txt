@@ -1,0 +1,62 @@
+
+=== data/hw/runs/chicago/2026-11-11/analysis/debias_w1_jk/g0/maps/prod_t6.npz
+  q0 in [-1.00, +6.00], dt = 0.5: period 2pi/dt = 12.566, Nyquist |q0| <= 6.283
+  kinematic edge q0 >= -dE = -2.885 (prod k1.26_s1.00), below the grid's lower edge -1.00
+  00: max|Im G| = 0.0e+00, peak |W| = 1.010
+      max|W(-q0,q1) - W(q0,-q1)|   = 3.44e-15  (3.4e-15 of peak)
+      max|Wodd(-q0,q1) + Wodd(q0,q1)| = 1.89e-15  (6.4e-15 of peak)
+      max|W(q0) - W(q0 + 2pi/dt)| = 2.78e-15  (2.7e-15 of peak), over q0 in [-1.0, +6.0]
+      wedge q0         bins       A   shot    win  sigma
+      [-1.00, 2.50]       88   1.269  0.064  0.281   4.41
+      [-0.50, 2.50]       75   1.242  0.061  0.316   3.86
+      [+0.00, 2.50]       63   1.264  0.061  0.266   4.63
+      [+0.25, 2.50]       56   1.275  0.061  0.243   5.09
+  10: max|Im G| = 0.0e+00, peak |W| = 0.352
+      max|W(-q0,q1) - W(q0,-q1)|   = 6.94e-16  (2.0e-15 of peak)
+      max|Wodd(-q0,q1) + Wodd(q0,q1)| = 6.66e-16  (2.2e-15 of peak)
+      max|W(q0) - W(q0 + 2pi/dt)| = 1.10e-15  (3.1e-15 of peak), over q0 in [-1.0, +6.0]
+      wedge q0         bins       A   shot    win  sigma
+      [-1.00, 2.50]       88   2.691  0.297  0.175   7.80
+      [-0.50, 2.50]       75   2.681  0.292  0.196   7.63
+      [+0.00, 2.50]       63   3.080  0.337  0.198   7.89
+      [+0.25, 2.50]       56   3.221  0.353  0.196   7.97
+
+=== data/hw/runs/chicago/2026-11-11/analysis/debias_w1_jk/g0/maps/relA_t6.npz
+  q0 in [-1.00, +6.00], dt = 0.5: period 2pi/dt = 12.566, Nyquist |q0| <= 6.283
+  kinematic edge q0 >= -dE = -3.149 (relA k1.26_s1.50), below the grid's lower edge -1.00
+  00: max|Im G| = 0.0e+00, peak |W| = 0.424
+      max|W(-q0,q1) - W(q0,-q1)|   = 1.62e-15  (3.8e-15 of peak)
+      max|Wodd(-q0,q1) + Wodd(q0,q1)| = 8.88e-16  (6.8e-15 of peak)
+      max|W(q0) - W(q0 + 2pi/dt)| = 1.19e-15  (2.8e-15 of peak), over q0 in [-1.0, +6.0]
+      wedge q0         bins       A   shot    win  sigma
+      [-1.00, 2.50]       88   0.186  0.103  0.017   1.79
+      [-0.50, 2.50]       75   0.188  0.100  0.028   1.81
+      [+0.00, 2.50]       63   0.243  0.092  0.020   2.57
+      [+0.25, 2.50]       56   0.257  0.092  0.017   2.76
+  10: max|Im G| = 0.0e+00, peak |W| = 0.717
+      max|W(-q0,q1) - W(q0,-q1)|   = 2.00e-15  (2.8e-15 of peak)
+      max|Wodd(-q0,q1) + Wodd(q0,q1)| = 1.94e-15  (3.1e-15 of peak)
+      max|W(q0) - W(q0 + 2pi/dt)| = 2.89e-15  (4.0e-15 of peak), over q0 in [-1.0, +6.0]
+      wedge q0         bins       A   shot    win  sigma
+      [-1.00, 2.50]       88   1.930  0.128  0.163   9.33
+      [-0.50, 2.50]       75   1.991  0.130  0.162   9.60
+      [+0.00, 2.50]       63   1.972  0.131  0.137  10.39
+      [+0.25, 2.50]       56   1.966  0.132  0.132  10.55
+  01: max|Im G| = 0.0e+00, peak |W| = 0.556
+      max|W(-q0,q1) - W(q0,-q1)|   = 1.61e-15  (2.9e-15 of peak)
+      max|Wodd(-q0,q1) + Wodd(q0,q1)| = 1.53e-15  (3.2e-15 of peak)
+      max|W(q0) - W(q0 + 2pi/dt)| = 2.28e-15  (4.1e-15 of peak), over q0 in [-1.0, +6.0]
+      wedge q0         bins       A   shot    win  sigma
+      [-1.00, 2.50]       88   1.304  0.242  0.052   5.26
+      [-0.50, 2.50]       75   1.441  0.146  0.061   9.10
+      [+0.00, 2.50]       63   1.443  0.104  0.046  12.75
+      [+0.25, 2.50]       56   1.442  0.101  0.043  13.17
+  11: max|Im G| = 0.0e+00, peak |W| = 2.022
+      max|W(-q0,q1) - W(q0,-q1)|   = 2.33e-15  (1.2e-15 of peak)
+      max|Wodd(-q0,q1) + Wodd(q0,q1)| = 1.19e-15  (1.7e-15 of peak)
+      max|W(q0) - W(q0 + 2pi/dt)| = 6.66e-15  (3.3e-15 of peak), over q0 in [-1.0, +6.0]
+      wedge q0         bins       A   shot    win  sigma
+      [-1.00, 2.50]       88   0.934  0.308  0.034   3.01
+      [-0.50, 2.50]       75   1.044  0.353  0.028   2.95
+      [+0.00, 2.50]       63   1.111  0.382  0.026   2.90
+      [+0.25, 2.50]       56   1.126  0.388  0.026   2.89

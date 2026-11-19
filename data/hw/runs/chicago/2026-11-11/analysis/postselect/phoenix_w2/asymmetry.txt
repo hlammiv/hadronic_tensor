@@ -1,0 +1,26 @@
+
+=== data/hw/runs/chicago/2026-11-11/analysis/postselect/phoenix_w2/maps/prod_t6.npz
+  q0 in [-1.00, +6.00], dt = 0.5: period 2pi/dt = 12.566, Nyquist |q0| <= 6.283
+  kinematic edge q0 >= -dE = -2.885 (prod k1.26_s1.00), below the grid's lower edge -1.00
+  00: max|Im G| = 0.0e+00, peak |W| = 1.011
+      max|W(-q0,q1) - W(q0,-q1)|   = 3.33e-15  (3.3e-15 of peak)
+      max|Wodd(-q0,q1) + Wodd(q0,q1)| = 1.22e-15  (5.7e-15 of peak)
+      max|W(q0) - W(q0 + 2pi/dt)| = 2.72e-15  (2.7e-15 of peak), over q0 in [-1.0, +6.0]
+      wedge q0         bins       A   shot    win  sigma
+      [-1.00, 2.50]       88   0.847  0.035  0.165   5.00
+      [-0.50, 2.50]       75   0.833  0.034  0.182   4.49
+      [+0.00, 2.50]       63   0.857  0.036  0.157   5.33
+      [+0.25, 2.50]       56   0.867  0.037  0.146   5.76
+
+=== data/hw/runs/chicago/2026-11-11/analysis/postselect/phoenix_w2/maps/relA_t6.npz
+  q0 in [-1.00, +6.00], dt = 0.5: period 2pi/dt = 12.566, Nyquist |q0| <= 6.283
+  kinematic edge q0 >= -dE = -3.149 (relA k1.26_s1.50), below the grid's lower edge -1.00
+  00: max|Im G| = 0.0e+00, peak |W| = 0.385
+      max|W(-q0,q1) - W(q0,-q1)|   = 1.30e-15  (3.4e-15 of peak)
+      max|Wodd(-q0,q1) + Wodd(q0,q1)| = 7.77e-16  (5.5e-15 of peak)
+      max|W(q0) - W(q0 + 2pi/dt)| = 1.05e-15  (2.7e-15 of peak), over q0 in [-1.0, +6.0]
+      wedge q0         bins       A   shot    win  sigma
+      [-1.00, 2.50]       88   1.109  0.229  0.089   4.52
+      [-0.50, 2.50]       75   1.067  0.238  0.071   4.30
+      [+0.00, 2.50]       63   1.083  0.241  0.076   4.29
+      [+0.25, 2.50]       56   1.088  0.242  0.078   4.29
