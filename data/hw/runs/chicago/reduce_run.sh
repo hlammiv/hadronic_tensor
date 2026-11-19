@@ -28,7 +28,7 @@
 set -u
 cd "$(dirname "$0")/../../../.."
 PY=.venv/bin/python
-RUN=${1:?run folder}; SUB=${2:?jobs/raw subfolder}; OUTTAG=${3:?analysis tag}
+RUN=${1:?run folder}; SUB=${2?jobs/raw subfolder, "" when the run keeps them flat}; OUTTAG=${3:?analysis tag}
 DEV=${4:-ibm_chicago}; shift $(( $# < 4 ? $# : 4 )); MAPFLAGS=("$@")
 WRAP=${HTQ_WRAP:-data/hw/runs/chicago/2026-11-06/analysis/2026-11-07_debias/analyze_debias.py}
 CARDS="prod_k1.26_s0.75_ns50 relA_k1.26_s0.75_ns50"

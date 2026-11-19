@@ -1,0 +1,58 @@
+
+=== prod_t6.npz   region: wedge q0 in [0, 2.5]
+ nu = 0  (00 J0 probe, 10 J1 probe)  t_max 6  sigma_t 3   masked points filled from the reference: {'00': 15, '10': 457}   1/A(10) = 0.254
+   J0 side / J1 side      integral       s_lo   s_hi  resid 1 resid lo   differential   s_lo   s_hi  resid 1 resid lo
+   ref / ref  (control)                 0.993  0.993    0.017    0.013                 0.997  1.000    0.056    0.056
+   ref / hw                             0.275  0.559    1.945    1.027                 0.226  0.550    1.222    0.868
+   hw  / ref                            0.407  5.898    0.958    0.853                 0.504  6.374    1.207    1.096
+   hw  / hw                            -0.069 -5.469    2.340    0.954                -0.032-12.434    2.013    1.012
+   ref / hw, integral form, [s_lo, s_hi] over q0 thirds of [+0.00, +2.48]: [0.29, 0.59]  [0.24, 0.47]  [0.20, 0.28]
+   W10 derived from the J0 grid through continuity, matched filter against the reference W10:
+   J0 grid                |q1| >= |  A full     r |   A odd     r
+   reference (control)        0.5 |   1.231  0.91 |   1.380  0.91
+   reference (control)        1.1 |   1.279  0.90 |   1.374  0.90
+   reference (control)        1.6 |   1.321  0.90 |   1.366  0.89
+   hardware (filled)          0.5 |   0.682  0.21 |  -0.473 -0.18
+   hardware (filled)          1.1 |   0.700  0.22 |  -0.409 -0.24
+   hardware (filled)          1.6 |   0.536  0.07 |  -0.577 -0.37
+   measured hardware          0.5 |               |   3.916  0.85
+   measured hardware          1.1 |               |   4.169  0.87
+   measured hardware          1.6 |               |   4.196  0.87
+
+=== relA_t6.npz   region: wedge q0 in [0, 2.5]
+ nu = 0  (00 J0 probe, 10 J1 probe)  t_max 6  sigma_t 3   masked points filled from the reference: {'00': 13, '10': 261}   1/A(10) = 0.489
+   J0 side / J1 side      integral       s_lo   s_hi  resid 1 resid lo   differential   s_lo   s_hi  resid 1 resid lo
+   ref / ref  (control)                 1.009  1.013    0.154    0.154                 1.008  1.010    0.057    0.056
+   ref / hw                             0.356  0.685    1.645    0.917                 0.340  0.666    1.020    0.917
+   hw  / ref                            0.292  1.479    1.619    1.034                 0.429  1.598    1.312    1.131
+   hw  / hw                             0.167  0.615    3.413    0.939                 0.166  0.918    1.863    1.115
+   ref / hw, integral form, [s_lo, s_hi] over q0 thirds of [+0.00, +2.48]: [0.33, 0.65]  [0.47, 0.82]  [0.24, 0.43]
+   W10 derived from the J0 grid through continuity, matched filter against the reference W10:
+   J0 grid                |q1| >= |  A full     r |   A odd     r
+   reference (control)        0.5 |   0.908  0.95 |   0.973  0.96
+   reference (control)        1.1 |   0.922  0.95 |   0.968  0.96
+   reference (control)        1.6 |   0.937  0.95 |   0.960  0.96
+   hardware (filled)          0.5 |   0.233  0.18 |   0.338  0.33
+   hardware (filled)          1.1 |   0.370  0.46 |   0.421  0.61
+   hardware (filled)          1.6 |   0.396  0.54 |   0.422  0.61
+   measured hardware          0.5 |               |   2.032  0.82
+   measured hardware          1.1 |               |   2.049  0.87
+   measured hardware          1.6 |               |   1.789  0.90
+ nu = 1  (01 J0 probe, 11 J1 probe)  t_max 6  sigma_t 3   masked points filled from the reference: {'01': 12, '11': 189}   1/A(11) = 0.809
+   J0 side / J1 side      integral       s_lo   s_hi  resid 1 resid lo   differential   s_lo   s_hi  resid 1 resid lo
+   ref / ref  (control)                 0.951  0.958    0.216    0.199                 0.987  0.996    0.070    0.068
+   ref / hw                             0.277  1.091    1.542    0.795                 0.196  0.767    1.424    0.866
+   hw  / ref                            0.756  1.626    0.960    0.805                 1.489  3.063    0.740    0.695
+   hw  / hw                             0.213  1.912    2.207    1.055                 0.562  1.238    0.966    0.645
+   ref / hw, integral form, [s_lo, s_hi] over q0 thirds of [+0.00, +2.48]: [0.30, 1.08]  [0.23, 2.00]  [0.19, 0.31]
+   W11 derived from the J0 grid through continuity, matched filter against the reference W11:
+   J0 grid                |q1| >= |  A full     r |   A odd     r
+   reference (control)        0.5 |   0.871  0.88 |   0.789  0.88
+   reference (control)        1.1 |   0.835  0.87 |   0.755  0.90
+   reference (control)        1.6 |   0.774  0.81 |   0.800  0.87
+   hardware (filled)          0.5 |   0.971  0.09 |  -0.143 -0.12
+   hardware (filled)          1.1 |   1.258  0.30 |   0.532  0.41
+   hardware (filled)          1.6 |   1.100  0.21 |   1.108  0.45
+   measured hardware          0.5 |               |   1.265  0.72
+   measured hardware          1.1 |               |   1.548  0.70
+   measured hardware          1.6 |               |   1.783  0.64

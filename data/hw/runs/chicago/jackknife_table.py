@@ -30,19 +30,24 @@ def parse(path):
     return out
 
 
-pooled_dir, jk_dir, G = sys.argv[1], sys.argv[2], int(sys.argv[3])
-pooled = parse(f"{pooled_dir}/asymmetry.txt")
-drops = [parse(f"{jk_dir}/g{g}/asymmetry.txt") for g in range(G)]
-print(f"jackknife over {G} groups of twirl instances; wedge [0, 2.5], t_max 6")
-print(f"{'particle':12s} {'W':3s} {'A':>7s} {'shot':>6s} {'window':>7s} {'jk err':>7s} {'A/err':>6s}   leave-one-out")
-for key in sorted(pooled):
-    p = pooled[key]
-    th = [d.get(key) for d in drops]
-    if any(t is None for t in th):
-        print(f"{key[0]:12s} {key[1]:3s} {p[0]:7.2f} (jackknife incomplete)")
-        continue
-    th = np.array([t[0] for t in th])
-    jk = np.sqrt((G - 1) / G * np.sum((th - th.mean()) ** 2))
-    flag = "  UNSTABLE: pooled outside the leave-one-out range" if not th.min() <= p[0] <= th.max() else ""
-    print(f"{key[0]:12s} {key[1]:3s} {p[0]:7.2f} {p[1]:6.2f} {p[2]:7.2f} {jk:7.2f} {p[0] / np.hypot(jk, p[2]):6.1f}   "
-          + " ".join(f"{t:.2f}" for t in th) + flag)
+def main():
+    pooled_dir, jk_dir, G = sys.argv[1], sys.argv[2], int(sys.argv[3])
+    pooled = parse(f"{pooled_dir}/asymmetry.txt")
+    drops = [parse(f"{jk_dir}/g{g}/asymmetry.txt") for g in range(G)]
+    print(f"jackknife over {G} groups of twirl instances; wedge [0, 2.5], t_max 6")
+    print(f"{'particle':12s} {'W':3s} {'A':>7s} {'shot':>6s} {'window':>7s} {'jk err':>7s} {'A/err':>6s}   leave-one-out")
+    for key in sorted(pooled):
+        p = pooled[key]
+        th = [d.get(key) for d in drops]
+        if any(t is None for t in th):
+            print(f"{key[0]:12s} {key[1]:3s} {p[0]:7.2f} (jackknife incomplete)")
+            continue
+        th = np.array([t[0] for t in th])
+        jk = np.sqrt((G - 1) / G * np.sum((th - th.mean()) ** 2))
+        flag = "  UNSTABLE: pooled outside the leave-one-out range" if not th.min() <= p[0] <= th.max() else ""
+        print(f"{key[0]:12s} {key[1]:3s} {p[0]:7.2f} {p[1]:6.2f} {p[2]:7.2f} {jk:7.2f} {p[0] / np.hypot(jk, p[2]):6.1f}   "
+              + " ".join(f"{t:.2f}" for t in th) + flag)
+
+
+if __name__ == "__main__":
+    main()
