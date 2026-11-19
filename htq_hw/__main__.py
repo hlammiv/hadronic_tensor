@@ -225,6 +225,8 @@ def _setup(args, basis=None, require_real=False):
                              basis=run_basis, min_core_t2_us=_core_t2(args), packet=_packet(args))
     if emb.info.get("core_t2_us"):
         log(f"Hadamard-test core T2: {T._core_summary(emb.info['core_t2_us'])}")
+    if emb.info.get("packet"):
+        log(f"packet region: {T._packet_summary(emb.info['packet'])}")
     if getattr(args, "preset", None):
         specs = CP.compose_presets(args.preset)
         card = CP.load_cards(specs, None)       # {name: card} for the composed campaign
